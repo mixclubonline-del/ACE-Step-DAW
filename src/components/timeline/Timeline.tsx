@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { useUIStore } from '../../store/uiStore';
 import { TimeRuler } from './TimeRuler';
@@ -9,7 +9,8 @@ import { snapToGrid } from '../../utils/time';
 import { MultiTrackGenerateModal } from '../generation/MultiTrackGenerateModal';
 import { useAudioImport } from '../../hooks/useAudioImport';
 
-export const TRACK_INSPECTOR_HEIGHT = 220; // px — must match TrackInspector height
+/** @deprecated Inspector is now a modal; kept for potential future use */
+export const TRACK_INSPECTOR_HEIGHT = 220;
 
 const DRAG_THRESHOLD_PX = 4;
 
@@ -59,7 +60,6 @@ export function Timeline() {
   const setContextWindow = useUIStore((s) => s.setContextWindow);
   const selectWindow = useUIStore((s) => s.selectWindow);
   const setSelectWindow = useUIStore((s) => s.setSelectWindow);
-  const expandedTrackId = useUIStore((s) => s.expandedTrackId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackAreaRef = useRef<HTMLDivElement>(null);
 
@@ -101,6 +101,21 @@ export function Timeline() {
       await importMultipleFiles(files);
     }
   }, [importMultipleFiles]);
+
+  // Safety net: if a child (e.g. TrackLane) stops propagation on drop,
+  // the Timeline's own handleDrop never fires. Listen globally to clear the overlay.
+  useEffect(() => {
+    const clearOverlay = () => {
+      dragCounterRef.current = 0;
+      setFileDragOver(false);
+    };
+    window.addEventListener('drop', clearOverlay);
+    window.addEventListener('dragend', clearOverlay);
+    return () => {
+      window.removeEventListener('drop', clearOverlay);
+      window.removeEventListener('dragend', clearOverlay);
+    };
+  }, []);
 
   const sortedTracks = project
     ? [...project.tracks].sort((a, b) => a.order - b.order)
@@ -366,15 +381,7 @@ export function Timeline() {
             )}
 
             {sortedTracks.map((track) => (
-              <div key={track.id}>
-                <TrackLane track={track} />
-                {expandedTrackId === track.id && (
-                  <div
-                    className="border-b border-daw-border bg-zinc-950/60"
-                    style={{ height: TRACK_INSPECTOR_HEIGHT }}
-                  />
-                )}
-              </div>
+              <TrackLane key={track.id} track={track} />
             ))}
 
             {sortedTracks.length === 0 && (

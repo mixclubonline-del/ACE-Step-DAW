@@ -23,8 +23,7 @@ export function useAudioImport() {
     const audioBuffer = await engine.ctx.decodeAudioData(arrayBuffer);
     const duration = audioBuffer.duration;
 
-    // Create a custom track
-    const track = addTrack('custom');
+    const track = addTrack('custom', 'sample');
     // Rename to the file name
     useProjectStore.getState().updateTrack(track.id, {
       displayName: file.name.replace(/\.[^.]+$/, ''),

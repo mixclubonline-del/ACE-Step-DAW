@@ -6,6 +6,7 @@ import { ClipBlock } from './ClipBlock';
 import { AddLayerModal } from '../generation/AddLayerModal';
 import { snapToGrid } from '../../utils/time';
 import { useAudioImport } from '../../hooks/useAudioImport';
+import { TRACK_TYPE_CATALOG } from '../../constants/tracks';
 
 interface TrackLaneProps {
   track: Track;
@@ -90,6 +91,8 @@ export function TrackLane({ track }: TrackLaneProps) {
 
   if (!project) return null;
 
+  const trackType = track.trackType ?? 'stems';
+  const isComingSoon = trackType === 'sequencer' || trackType === 'pianoRoll';
   const totalWidth = project.totalDuration * pixelsPerSecond;
 
   const hitsClip = useCallback((clickTime: number): boolean => {
@@ -101,6 +104,7 @@ export function TrackLane({ track }: TrackLaneProps) {
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
+    if (isComingSoon) return;
     e.preventDefault();
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
@@ -111,10 +115,11 @@ export function TrackLane({ track }: TrackLaneProps) {
     const duration = Math.max(10, Math.min(30, remaining));
     setCtxMenu({ x: e.clientX, y: e.clientY, startTime, duration });
     setAddLayerTarget(null);
-  }, [pixelsPerSecond, project.bpm, project.totalDuration]);
+  }, [isComingSoon, pixelsPerSecond, project.bpm, project.totalDuration]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
+    if (isComingSoon) return;
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     const laneX = e.clientX - rect.left;
@@ -126,7 +131,7 @@ export function TrackLane({ track }: TrackLaneProps) {
     const duration = Math.max(10, Math.min(30, remaining));
     setCtxMenu({ x: e.clientX, y: e.clientY, startTime, duration });
     setAddLayerTarget(null);
-  }, [pixelsPerSecond, project.bpm, project.totalDuration, hitsClip]);
+  }, [isComingSoon, pixelsPerSecond, project.bpm, project.totalDuration, hitsClip]);
 
   const clearSel = useCallback(() => {
     setAddLayerTarget(null);
@@ -180,9 +185,19 @@ export function TrackLane({ track }: TrackLaneProps) {
           </div>
         )}
 
-        {track.clips.map((clip) => (
-          <ClipBlock key={clip.id} clip={clip} track={track} />
-        ))}
+        {isComingSoon ? (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+            <div className="flex items-center gap-2 bg-daw-surface/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-daw-border">
+              <span className="text-lg">{TRACK_TYPE_CATALOG[trackType].emoji}</span>
+              <span className="text-xs font-medium text-zinc-400">{TRACK_TYPE_CATALOG[trackType].label}</span>
+              <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">Coming Soon</span>
+            </div>
+          </div>
+        ) : (
+          track.clips.map((clip) => (
+            <ClipBlock key={clip.id} clip={clip} track={track} />
+          ))
+        )}
 
         {ctxMenu && (
           <LaneContextMenu

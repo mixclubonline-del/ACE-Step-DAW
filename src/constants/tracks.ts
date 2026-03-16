@@ -1,4 +1,4 @@
-import type { TrackName } from '../types/project';
+import type { TrackName, TrackType } from '../types/project';
 
 export interface TrackInfo {
   name: TrackName;
@@ -29,6 +29,22 @@ export const TRACK_NAMES: TrackName[] = [
   'strings', 'synth', 'fx', 'brass', 'woodwinds',
   'backing_vocals', 'vocals',
 ];
+
+export interface TrackTypeInfo {
+  type: TrackType;
+  label: string;
+  abbr: string;
+  emoji: string;
+  color: string;
+  description: string;
+}
+
+export const TRACK_TYPE_CATALOG: Record<TrackType, TrackTypeInfo> = {
+  stems:     { type: 'stems',     label: 'Stems',      abbr: 'STM', emoji: '🎛️', color: '#3b82f6', description: 'AI-generated isolated instrument tracks' },
+  sample:    { type: 'sample',    label: 'Sample',     abbr: 'SMP', emoji: '📁', color: '#f97316', description: 'User-imported audio clips' },
+  sequencer: { type: 'sequencer', label: 'Sequencer',  abbr: 'SEQ', emoji: '🎹', color: '#22c55e', description: 'Step-based pattern editor (coming soon)' },
+  pianoRoll: { type: 'pianoRoll', label: 'Piano Roll', abbr: 'PNO', emoji: '🎵', color: '#a855f7', description: 'MIDI note editor with virtual instruments (coming soon)' },
+};
 
 export const KEY_SCALES = [
   'C major', 'C minor', 'C# major', 'C# minor',

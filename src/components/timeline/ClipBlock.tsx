@@ -25,6 +25,8 @@ interface DragGhostInfo {
   height: number;
   targetTrackId: string | null;
   targetLaneRect: { top: number; height: number } | null;
+  /** Original lane rect for showing source placeholder */
+  sourceLaneRect: { top: number; height: number } | null;
 }
 
 export function ClipBlock({ clip, track }: ClipBlockProps) {
@@ -128,14 +130,19 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
 
         const closest = findClosestLane(ev.clientY);
         if (closest) {
+          const ghostLeft = newStart * pixelsPerSecond;
+          const sourceLane = findClosestLane(startY);
           setDragGhost({
-            x: ev.clientX - clipW / 2,
-            y: ev.clientY - clipH / 2,
+            x: ghostLeft,
+            y: closest.rect.top + 4,
             width: clipW,
             height: clipH,
             targetTrackId: closest.trackId !== track.id ? closest.trackId : null,
             targetLaneRect: closest.trackId !== track.id
               ? { top: closest.rect.top, height: closest.rect.height }
+              : null,
+            sourceLaneRect: closest.trackId !== track.id && sourceLane
+              ? { top: sourceLane.rect.top, height: sourceLane.rect.height }
               : null,
           });
         }
@@ -246,7 +253,7 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
         className={`absolute top-1 bottom-1 rounded-sm select-none overflow-hidden
           ${statusStyles[clip.generationStatus] ?? ''}
           ${isSelected ? 'ring-2 ring-white ring-offset-1 ring-offset-transparent' : ''}
-          ${dragGhost ? 'opacity-40' : ''}
+          ${dragGhost && dragGhost.targetTrackId ? 'opacity-0' : dragGhost ? '' : ''}
         `}
         style={{
           left,
@@ -392,22 +399,67 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
       )}
 
       {/* Cross-track drag ghost + target lane highlight */}
-      {dragGhost && (
+      {dragGhost && dragGhost.targetTrackId && (
         <>
-          {/* Ghost preview following the cursor */}
+          {/* Source lane placeholder (dashed outline showing where clip came from) */}
+          {dragGhost.sourceLaneRect && (
+            <div
+              className="fixed pointer-events-none z-[98]"
+              style={{
+                left: clipBlockRef.current?.getBoundingClientRect().left ?? left,
+                top: dragGhost.sourceLaneRect.top + 4,
+                width,
+                height: dragGhost.sourceLaneRect.height - 8,
+                border: `1.5px dashed ${hexToRgba(track.color, 0.4)}`,
+                borderRadius: 2,
+                backgroundColor: hexToRgba(track.color, 0.04),
+              }}
+            />
+          )}
+
+          {/* Lane-aligned ghost — visually mirrors the original clip at full size */}
           <div
             className="fixed pointer-events-none z-[100] rounded-sm overflow-hidden"
             style={{
-              left: dragGhost.x,
+              left: clipBlockRef.current?.getBoundingClientRect().left ?? left,
               top: dragGhost.y,
-              width: Math.min(dragGhost.width, 400),
+              width: dragGhost.width,
               height: dragGhost.height,
-              backgroundColor: hexToRgba(track.color, 0.5),
+              backgroundColor: hexToRgba(track.color, 0.45),
               borderLeft: `2px solid ${track.color}`,
-              boxShadow: `0 4px 20px ${hexToRgba(track.color, 0.3)}, 0 0 0 1px ${hexToRgba(track.color, 0.4)}`,
+              boxShadow: `0 4px 20px ${hexToRgba(track.color, 0.3)}, 0 0 0 1px ${hexToRgba(track.color, 0.5)}`,
+              transition: 'top 80ms ease-out',
             }}
           >
-            <div className="px-1.5 py-0.5 text-[9px] font-medium text-white truncate drop-shadow-sm">
+            {/* Mini waveform inside ghost */}
+            {peaks && numBars > 0 && (
+              <div className="absolute inset-0 flex items-center overflow-hidden">
+                <svg
+                  width={peakWidthPx}
+                  height="100%"
+                  viewBox={`0 0 ${peakWidthPx} 100`}
+                  preserveAspectRatio="none"
+                  className="opacity-50 ml-0.5"
+                >
+                  {Array.from({ length: numBars }, (_, i) => {
+                    const peakIdx = startPeakIdx + Math.floor((i / numBars) * visiblePeakCount);
+                    const peak = peaks[Math.min(peakIdx, peaks.length - 1)];
+                    const h = peak * 80;
+                    return (
+                      <rect
+                        key={i}
+                        x={i * barSpacing}
+                        y={50 - h / 2}
+                        width={Math.max(barSpacing * 0.7, 0.5)}
+                        height={Math.max(h, 1)}
+                        fill={track.color}
+                      />
+                    );
+                  })}
+                </svg>
+              </div>
+            )}
+            <div className="absolute top-0 left-1.5 right-1.5 text-[9px] font-medium text-white truncate leading-4 z-10 drop-shadow-sm">
               {clip.prompt || track.displayName}
             </div>
           </div>
@@ -421,9 +473,10 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
                 top: dragGhost.targetLaneRect.top,
                 width: '100vw',
                 height: dragGhost.targetLaneRect.height,
-                backgroundColor: hexToRgba(track.color, 0.08),
-                borderTop: `1px solid ${hexToRgba(track.color, 0.4)}`,
-                borderBottom: `1px solid ${hexToRgba(track.color, 0.4)}`,
+                backgroundColor: hexToRgba(track.color, 0.06),
+                borderTop: `1px solid ${hexToRgba(track.color, 0.35)}`,
+                borderBottom: `1px solid ${hexToRgba(track.color, 0.35)}`,
+                transition: 'top 80ms ease-out',
               }}
             />
           )}

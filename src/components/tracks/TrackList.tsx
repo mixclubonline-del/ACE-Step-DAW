@@ -2,13 +2,11 @@ import { useState, useCallback, useRef } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { useUIStore } from '../../store/uiStore';
 import { TrackHeader } from './TrackHeader';
-import { TrackInspector } from './TrackInspector';
 import { AddTrackButton } from './AddTrackButton';
 
 export function TrackList() {
   const project = useProjectStore((s) => s.project);
   const reorderTrack = useProjectStore((s) => s.reorderTrack);
-  const expandedTrackId = useUIStore((s) => s.expandedTrackId);
   const trackListWidth = useUIStore((s) => s.trackListWidth);
   const setTrackListWidth = useUIStore((s) => s.setTrackListWidth);
 
@@ -86,19 +84,15 @@ export function TrackList() {
 
       <div className="flex-1 overflow-y-auto">
         {sortedTracks.map((track) => (
-          <div key={track.id}>
-            <TrackHeader
-              track={track}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              isDragOver={dragOverId === track.id}
-              dragOverPosition={dragOverId === track.id ? dragOverPosition : null}
-            />
-            {expandedTrackId === track.id && (
-              <TrackInspector track={track} />
-            )}
-          </div>
+          <TrackHeader
+            key={track.id}
+            track={track}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            isDragOver={dragOverId === track.id}
+            dragOverPosition={dragOverId === track.id ? dragOverPosition : null}
+          />
         ))}
       </div>
 
