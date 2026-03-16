@@ -22,10 +22,11 @@ export async function generateAllTracks(): Promise<void> {
   genStore.setIsGenerating(true);
 
   try {
-    const tracks = getTracksInGenerationOrder();
+    const allTracks = getTracksInGenerationOrder();
+    const tracks = allTracks.filter(t => (t.trackType ?? 'stems') === 'stems');
     let previousCumulativeBlob: Blob | null = null;
 
-    console.log(`[GenerationPipeline] generateAllTracks: ${tracks.length} tracks in order:`,
+    console.log(`[GenerationPipeline] generateAllTracks: ${tracks.length} stems tracks (of ${allTracks.length} total) in order:`,
       tracks.map(t => t.trackName));
 
     for (const track of tracks) {
@@ -187,6 +188,12 @@ async function generateClipInternal(
   const clip = store.getClipById(clipId);
   const track = store.getTrackForClip(clipId);
   if (!clip || !track) return null;
+
+  const trackType = track.trackType ?? 'stems';
+  if (trackType !== 'stems') {
+    console.warn(`[GenerationPipeline] Skipping generation for non-stems track (type=${trackType}, track=${track.displayName})`);
+    return null;
+  }
 
   // Create generation job
   const jobId = uuidv4();

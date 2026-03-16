@@ -4,6 +4,8 @@ export type TrackName =
   | 'backing_vocals' | 'vocals'
   | 'custom';
 
+export type TrackType = 'stems' | 'sample' | 'sequencer' | 'pianoRoll';
+
 export type ClipGenerationStatus =
   | 'empty' | 'queued' | 'generating' | 'processing' | 'ready' | 'error' | 'stale';
 
@@ -68,6 +70,7 @@ export interface Clip {
 
 export interface Track {
   id: string;
+  trackType?: TrackType;
   trackName: TrackName;
   displayName: string;
   color: string;
@@ -92,6 +95,21 @@ export interface Track {
   localCaption?: string;
   /** Per-track lane height in pixels (default 64, min 40, max 200). */
   laneHeight?: number;
+}
+
+/** Persistent asset entry — survives clip/track removal. Only deleted explicitly from the Assets panel. */
+export interface AssetClip {
+  id: string;
+  clipId: string;
+  trackDisplayName: string;
+  prompt: string;
+  source: 'generated' | 'uploaded';
+  isolatedAudioKey: string | null;
+  cumulativeMixKey: string | null;
+  waveformPeaks: number[] | null;
+  starred: boolean;
+  createdAt: number;
+  duration: number;
 }
 
 export interface GenerationDefaults {
@@ -119,4 +137,6 @@ export interface Project {
   globalCaption?: string;
   /** Master output fader level (0–1), default 1.0 */
   masterVolume?: number;
+  /** Persistent asset clips — survives clip/track removal. */
+  assets?: AssetClip[];
 }

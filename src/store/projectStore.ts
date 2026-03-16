@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { Project, Track, Clip, ClipVersion, TrackName, ClipGenerationStatus } from '../types/project';
+import type { Project, Track, Clip, ClipVersion, TrackName, TrackType, ClipGenerationStatus, AssetClip } from '../types/project';
 import { TRACK_CATALOG } from '../constants/tracks';
 import {
   DEFAULT_BPM,
@@ -50,9 +50,10 @@ interface ProjectState {
   setTrackLocalCaption: (trackId: string, caption: string) => void;
   setTrackReverb: (trackId: string, mix: number, roomSize: number) => void;
 
-  addTrack: (trackName: TrackName) => Track;
+  addTrack: (trackName: TrackName, trackType?: TrackType) => Track;
   removeTrack: (trackId: string) => void;
-  updateTrack: (trackId: string, updates: Partial<Pick<Track, 'displayName' | 'volume' | 'muted' | 'soloed' | 'laneHeight'>>) => void;
+  updateTrack: (trackId: string, updates: Partial<Pick<Track, 'displayName' | 'volume' | 'muted' | 'soloed' | 'laneHeight' | 'trackType'>>) => void;
+  renameTrack: (trackId: string, newName: string) => void;
   reorderTrack: (draggedId: string, targetId: string, position: 'before' | 'after') => void;
 
   addClip: (trackId: string, clip: Omit<Clip, 'id' | 'trackId' | 'generationStatus' | 'generationJobId' | 'cumulativeMixKey' | 'isolatedAudioKey' | 'waveformPeaks'>) => Clip;
@@ -67,6 +68,9 @@ interface ProjectState {
 
   toggleClipStar: (clipId: string) => void;
   moveClipToTrack: (clipId: string, targetTrackId: string, startTime?: number) => void;
+
+  removeAsset: (assetId: string) => void;
+  toggleAssetStar: (assetId: string) => void;
 
   getTrackById: (trackId: string) => Track | undefined;
   getClipById: (clipId: string) => Clip | undefined;
@@ -104,7 +108,21 @@ export const useProjectStore = create<ProjectState>()(
   setProject: (project) => {
     _history.length = 0;
     _future.length = 0;
-    set({ project });
+    // Migration: backfill trackType for projects created before the field existed
+    const migrated: Project = {
+      ...project,
+      tracks: project.tracks.map((t) => {
+        if (t.trackType) return t;
+        const inferred: TrackType =
+          t.trackName === 'custom' && t.clips.some((c) => c.source === 'uploaded')
+            ? 'sample'
+            : t.trackName === 'custom'
+              ? 'sample'
+              : 'stems';
+        return { ...t, trackType: inferred };
+      }),
+    };
+    set({ project: migrated });
   },
 
   undo: () => {
@@ -206,21 +224,22 @@ export const useProjectStore = create<ProjectState>()(
     });
   },
 
-  addTrack: (trackName) => {
+  addTrack: (trackName, trackType) => {
     const state = get();
     if (!state.project) throw new Error('No project');
     _pushHistory(state.project);
 
+    const resolvedType: TrackType = trackType ?? (trackName === 'custom' ? 'sample' : 'stems');
     const info = TRACK_CATALOG[trackName];
     const existingOrders = state.project.tracks.map((t) => t.order);
     const maxOrder = existingOrders.length > 0 ? Math.max(...existingOrders) : 0;
 
-    // When duplicate track names exist, append an incrementing suffix: "Drums 2", "Drums 3", …
     const sameNameCount = state.project.tracks.filter((t) => t.trackName === trackName).length;
     const displayName = sameNameCount === 0 ? info.displayName : `${info.displayName} ${sameNameCount + 1}`;
 
     const track: Track = {
       id: uuidv4(),
+      trackType: resolvedType,
       trackName,
       displayName,
       color: info.color,
@@ -269,6 +288,21 @@ export const useProjectStore = create<ProjectState>()(
         updatedAt: Date.now(),
         tracks: state.project.tracks.map((t) =>
           t.id === trackId ? { ...t, ...updates } : t,
+        ),
+      },
+    });
+  },
+
+  renameTrack: (trackId, newName) => {
+    const state = get();
+    if (!state.project) return;
+    _pushHistory(state.project);
+    set({
+      project: {
+        ...state.project,
+        updatedAt: Date.now(),
+        tracks: state.project.tracks.map((t) =>
+          t.id === trackId ? { ...t, displayName: newName } : t,
         ),
       },
     });
@@ -424,16 +458,49 @@ export const useProjectStore = create<ProjectState>()(
   updateClipStatus: (clipId, status, extra) => {
     const state = get();
     if (!state.project) return;
+
+    const updatedTracks = state.project.tracks.map((t) => ({
+      ...t,
+      clips: t.clips.map((c) =>
+        c.id === clipId ? { ...c, generationStatus: status, ...extra } : c,
+      ),
+    }));
+
+    let assets = [...(state.project.assets ?? [])];
+
+    // Auto-archive: when clip becomes 'ready', upsert into assets
+    if (status === 'ready') {
+      const track = updatedTracks.find((t) => t.clips.some((c) => c.id === clipId));
+      const clip = track?.clips.find((c) => c.id === clipId);
+      if (track && clip) {
+        const existingIdx = assets.findIndex((a) => a.clipId === clipId);
+        const asset: AssetClip = {
+          id: existingIdx >= 0 ? assets[existingIdx].id : uuidv4(),
+          clipId,
+          trackDisplayName: track.displayName,
+          prompt: clip.prompt,
+          source: clip.source ?? 'generated',
+          isolatedAudioKey: clip.isolatedAudioKey ?? (extra?.isolatedAudioKey as string | null) ?? null,
+          cumulativeMixKey: clip.cumulativeMixKey ?? (extra?.cumulativeMixKey as string | null) ?? null,
+          waveformPeaks: clip.waveformPeaks ?? (extra?.waveformPeaks as number[] | null) ?? null,
+          starred: existingIdx >= 0 ? assets[existingIdx].starred : false,
+          createdAt: Date.now(),
+          duration: clip.duration,
+        };
+        if (existingIdx >= 0) {
+          assets[existingIdx] = asset;
+        } else {
+          assets.push(asset);
+        }
+      }
+    }
+
     set({
       project: {
         ...state.project,
         updatedAt: Date.now(),
-        tracks: state.project.tracks.map((t) => ({
-          ...t,
-          clips: t.clips.map((c) =>
-            c.id === clipId ? { ...c, generationStatus: status, ...extra } : c,
-          ),
-        })),
+        tracks: updatedTracks,
+        assets,
       },
     });
   },
@@ -509,6 +576,8 @@ export const useProjectStore = create<ProjectState>()(
     const state = get();
     if (!state.project) return;
     _pushHistory(state.project);
+    const clip = state.project.tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
+    const newStarred = clip ? !clip.starred : true;
     set({
       project: {
         ...state.project,
@@ -516,9 +585,12 @@ export const useProjectStore = create<ProjectState>()(
         tracks: state.project.tracks.map((t) => ({
           ...t,
           clips: t.clips.map((c) =>
-            c.id === clipId ? { ...c, starred: !c.starred } : c,
+            c.id === clipId ? { ...c, starred: newStarred } : c,
           ),
         })),
+        assets: (state.project.assets ?? []).map((a) =>
+          a.clipId === clipId ? { ...a, starred: newStarred } : a,
+        ),
       },
     });
   },
@@ -553,6 +625,43 @@ export const useProjectStore = create<ProjectState>()(
           }
           return t;
         }),
+      },
+    });
+  },
+
+  removeAsset: (assetId) => {
+    const state = get();
+    if (!state.project) return;
+    _pushHistory(state.project);
+    set({
+      project: {
+        ...state.project,
+        updatedAt: Date.now(),
+        assets: (state.project.assets ?? []).filter((a) => a.id !== assetId),
+      },
+    });
+  },
+
+  toggleAssetStar: (assetId) => {
+    const state = get();
+    if (!state.project) return;
+    _pushHistory(state.project);
+    const asset = (state.project.assets ?? []).find((a) => a.id === assetId);
+    if (!asset) return;
+    const newStarred = !asset.starred;
+    set({
+      project: {
+        ...state.project,
+        updatedAt: Date.now(),
+        assets: (state.project.assets ?? []).map((a) =>
+          a.id === assetId ? { ...a, starred: newStarred } : a,
+        ),
+        tracks: state.project.tracks.map((t) => ({
+          ...t,
+          clips: t.clips.map((c) =>
+            c.id === asset.clipId ? { ...c, starred: newStarred } : c,
+          ),
+        })),
       },
     });
   },
