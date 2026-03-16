@@ -7,7 +7,6 @@
  */
 import { useProjectStore } from '../store/projectStore';
 import { loadAudioBlobByKey } from './audioFileManager';
-import { isolateTrackAudio } from '../engine/waveSubtraction';
 import { audioBufferToWavBlob } from '../utils/wav';
 
 export interface ContextWindow {
@@ -31,79 +30,81 @@ export async function extractContextAudio(ctx: ContextWindow): Promise<Blob | nu
   const ctxDuration = ctxEnd - ctxStart;
   if (ctxDuration <= 0) return null;
 
-  // Use an OfflineAudioContext so we don't need a live AudioContext
   const sampleRate = 48000;
   const frameLength = Math.ceil(ctxDuration * sampleRate);
   const offlineCtx = new OfflineAudioContext(2, frameLength, sampleRate);
 
-  // Sort tracks DESC by order (mirrors playback isolation order)
-  const tracksDesc = [...project.tracks].sort((a, b) => b.order - a.order);
-
-  // Determine which tracks are effectively audible (respect mute/solo just like playback)
   const soloActive = project.tracks.some((t) => t.soloed);
 
   let anyScheduled = false;
-  let previousCumBuffer: AudioBuffer | null = null;
 
-  for (const track of tracksDesc) {
-    // Whether this track's audio should be included in the final mix
+  for (const track of project.tracks) {
     const isAudible = !track.muted && (!soloActive || track.soloed);
+    if (!isAudible) continue;
 
     for (const clip of track.clips) {
-      if (clip.generationStatus !== 'ready' || !clip.cumulativeMixKey) continue;
+      if (clip.generationStatus !== 'ready') continue;
 
-      // Only include clips that overlap the context window
       const clipEnd = clip.startTime + clip.duration;
       if (clip.startTime >= ctxEnd || clipEnd <= ctxStart) continue;
 
-      const cumBlob = await loadAudioBlobByKey(clip.cumulativeMixKey);
-      if (!cumBlob) continue;
+      // Prefer isolatedAudioKey (pre-trimmed to clip region at generation),
+      // fall back to cumulativeMixKey (full project-length).
+      let blob: Blob | undefined;
+      let alreadyTrimmed = false;
 
-      const arrayBuffer = await cumBlob.arrayBuffer();
-      const cumBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
+      if (clip.isolatedAudioKey) {
+        blob = await loadAudioBlobByKey(clip.isolatedAudioKey);
+        if (blob) alreadyTrimmed = true;
+      }
+      if (!blob && clip.cumulativeMixKey) {
+        blob = await loadAudioBlobByKey(clip.cumulativeMixKey);
+      }
+      if (!blob) continue;
 
-      // Isolate this track's contribution using the same DESC-chain logic as playback.
-      // We always compute the isolation to keep `previousCumBuffer` advancing correctly,
-      // even for muted/non-soloed tracks. We just don't schedule their audio output.
-      const fullIsolated = (clip.generatedFromContext && previousCumBuffer !== null)
-        ? isolateTrackAudio(offlineCtx, cumBuffer, previousCumBuffer)
-        : cumBuffer;
+      const arrayBuffer = await blob.arrayBuffer();
+      const buffer = await offlineCtx.decodeAudioData(arrayBuffer);
 
-      previousCumBuffer = cumBuffer;
+      // Compute the overlap between this clip and the context window.
+      // isolatedAudioKey buffers start at sample 0 = clip.startTime;
+      // cumulativeMixKey buffers start at sample 0 = project time 0.
+      const overlapStart = Math.max(clip.startTime, ctxStart);
+      const overlapEnd = Math.min(clipEnd, ctxEnd);
+      if (overlapEnd <= overlapStart) continue;
 
-      // Skip scheduling if the track is muted or silenced by solo
-      if (!isAudible) continue;
+      let srcStartSample: number;
+      let srcEndSample: number;
+      if (alreadyTrimmed) {
+        srcStartSample = Math.floor((overlapStart - clip.startTime) * sampleRate);
+        srcEndSample = Math.min(
+          Math.floor((overlapEnd - clip.startTime) * sampleRate),
+          buffer.length,
+        );
+      } else {
+        srcStartSample = Math.floor(overlapStart * sampleRate);
+        srcEndSample = Math.min(
+          Math.floor(overlapEnd * sampleRate),
+          buffer.length,
+        );
+      }
+      if (srcEndSample <= srcStartSample) continue;
 
-      // The isolated buffer covers the full project duration from time 0.
-      // We need to crop it to the context window range [ctxStart, ctxEnd].
-      const sr = fullIsolated.sampleRate;
-      const bufferStartSample = Math.floor(ctxStart * sr);
-      const bufferEndSample = Math.min(
-        Math.floor(ctxEnd * sr),
-        fullIsolated.length,
-      );
-      if (bufferEndSample <= bufferStartSample) continue;
-
-      const cropLength = bufferEndSample - bufferStartSample;
-      const cropped = offlineCtx.createBuffer(
-        fullIsolated.numberOfChannels,
-        cropLength,
-        sr,
-      );
-      for (let ch = 0; ch < fullIsolated.numberOfChannels; ch++) {
-        const src = fullIsolated.getChannelData(ch);
+      const cropLength = srcEndSample - srcStartSample;
+      const cropped = offlineCtx.createBuffer(buffer.numberOfChannels, cropLength, sampleRate);
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const src = buffer.getChannelData(ch);
         const dst = cropped.getChannelData(ch);
         for (let i = 0; i < cropLength; i++) {
-          dst[i] = src[bufferStartSample + i] ?? 0;
+          dst[i] = src[srcStartSample + i] ?? 0;
         }
       }
 
-      // Schedule this clip's contribution at time 0 in the offline render
-      // (the crop already aligns it to start at 0)
+      // Schedule at the correct offset within the context window
+      const scheduleTime = overlapStart - ctxStart;
       const source = offlineCtx.createBufferSource();
       source.buffer = cropped;
       source.connect(offlineCtx.destination);
-      source.start(0);
+      source.start(scheduleTime);
       anyScheduled = true;
     }
   }

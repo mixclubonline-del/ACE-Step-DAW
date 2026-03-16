@@ -7,7 +7,6 @@ import * as api from './aceStepApi';
 import { generateSilenceWav } from './silenceGenerator';
 import { saveAudioBlob, loadAudioBlobByKey } from './audioFileManager';
 import { getAudioEngine } from '../hooks/useAudioEngine';
-import { isolateTrackAudio } from '../engine/waveSubtraction';
 import { audioBufferToWavBlob } from '../utils/wav';
 import { computeWaveformPeaks } from '../utils/waveformPeaks';
 import { POLL_INTERVAL_MS, MAX_POLL_DURATION_MS } from '../constants/defaults';
@@ -340,38 +339,32 @@ async function generateClipInternal(
     // Store cumulative mix
     const cumulativeKey = await saveAudioBlob(project.id, clipId, 'cumulative', cumulativeBlob);
 
-    // Wave subtraction: isolate this track
+    // The backend output contains the isolated track in the generation region
+    // (repainting_start to repainting_end) and the original context mix outside
+    // it.  Since clipStart/clipDuration match the generation region, trimming to
+    // the clip region extracts exactly the isolated track -- no wave subtraction
+    // needed.
     const engine = getAudioEngine();
-    const cumulativeBuffer = await engine.decodeAudioData(cumulativeBlob);
+    const fullBuffer = await engine.decodeAudioData(cumulativeBlob);
 
-    let previousBuffer: AudioBuffer | null = null;
-    if (previousCumulativeBlob) {
-      previousBuffer = await engine.decodeAudioData(previousCumulativeBlob);
-    }
-
-    const fullIsolatedBuffer = isolateTrackAudio(engine.ctx, cumulativeBuffer, previousBuffer);
-
-    // Re-read clip from store in case the user moved/resized it during generation
     const currentClip = useProjectStore.getState().getClipById(clipId);
     const clipStart = currentClip?.startTime ?? clip.startTime;
     const clipDuration = currentClip?.duration ?? clip.duration;
 
-    // Trim isolated audio to just the clip's time region so the buffer
-    // represents only the clip's audio (not the full project duration).
-    const sampleRate = fullIsolatedBuffer.sampleRate;
+    const sampleRate = fullBuffer.sampleRate;
     const startSample = Math.floor(clipStart * sampleRate);
     const endSample = Math.min(
       Math.floor((clipStart + clipDuration) * sampleRate),
-      fullIsolatedBuffer.length,
+      fullBuffer.length,
     );
     const trimmedLength = Math.max(1, endSample - startSample);
     const trimmedBuffer = engine.ctx.createBuffer(
-      fullIsolatedBuffer.numberOfChannels,
+      fullBuffer.numberOfChannels,
       trimmedLength,
       sampleRate,
     );
-    for (let ch = 0; ch < fullIsolatedBuffer.numberOfChannels; ch++) {
-      const src = fullIsolatedBuffer.getChannelData(ch);
+    for (let ch = 0; ch < fullBuffer.numberOfChannels; ch++) {
+      const src = fullBuffer.getChannelData(ch);
       const dst = trimmedBuffer.getChannelData(ch);
       for (let i = 0; i < trimmedLength; i++) {
         dst[i] = src[startSample + i];
