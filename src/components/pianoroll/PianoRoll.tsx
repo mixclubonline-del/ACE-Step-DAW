@@ -323,7 +323,9 @@ export function PianoRoll() {
     // ─── Playback cursor ──────────────────────────────────────────────────
     if (clip) {
       const clipStartBeat = clip.startTime * (bpm / 60);
-      const currentBeat = currentTime * (bpm / 60) - clipStartBeat;
+      // Read currentTime directly from store to avoid RAF loop restart on each frame
+      const liveTime = useTransportStore.getState().currentTime;
+      const currentBeat = liveTime * (bpm / 60) - clipStartBeat;
       const clipDurationBeats = clip.duration * (bpm / 60);
       if (currentBeat >= 0 && currentBeat <= clipDurationBeats) {
         const cx = beatToX(currentBeat);
@@ -396,7 +398,7 @@ export function PianoRoll() {
     }
   }, [
     notes, bpm, prZoomX, prZoomY, prScrollX, prScrollY, gridSize, drawMode,
-    selectedNoteIds, currentTime, clip, velocityHeight,
+    selectedNoteIds, clip, velocityHeight,
     beatToX, pitchToY, pixelsPerBeat, keyHeight, gridBeats,
   ]);
 

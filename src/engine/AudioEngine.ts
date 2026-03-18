@@ -44,6 +44,9 @@ export class AudioEngine {
   private _lastClips: ClipScheduleInfo[] = [];
   private _lastTotalDuration = 0;
 
+  // MIDI event scheduler — fires callbacks when currentTime reaches scheduled time
+  private _midiEvents: { time: number; callback: () => void; fired: boolean }[] = [];
+
   // Metronome
   private _metronomeGain: GainNode;
   private _metronomeSources: OscillatorNode[] = [];
@@ -219,6 +222,19 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * Schedule a MIDI callback to fire when playback reaches the given time.
+   * Uses the same time base as the RAF-driven playhead, so it stays in sync
+   * with the Timeline and Piano Roll cursors.
+   */
+  scheduleMidiEvent(time: number, callback: () => void) {
+    this._midiEvents.push({ time, callback, fired: false });
+  }
+
+  clearMidiEvents() {
+    this._midiEvents = [];
+  }
+
   private _startTimeUpdate(totalDuration: number) {
     const tick = () => {
       if (!this._playing) return;
@@ -229,12 +245,21 @@ export class AudioEngine {
         // Reached end — notify listener (transport handles loop vs stop)
         this.stopAllSources();
         this._playing = false;
+        this._midiEvents = [];
         if (this._rafId !== null) {
           cancelAnimationFrame(this._rafId);
           this._rafId = null;
         }
         this._onEnded?.();
         return;
+      }
+
+      // Fire any MIDI events whose time has been reached
+      for (const evt of this._midiEvents) {
+        if (!evt.fired && currentTime >= evt.time) {
+          evt.fired = true;
+          evt.callback();
+        }
       }
 
       this._onTimeUpdate?.(currentTime);
@@ -251,6 +276,7 @@ export class AudioEngine {
     }
     this.stopAllSources();
     this.stopMetronome();
+    this.clearMidiEvents();
   }
 
   stopAllSources() {

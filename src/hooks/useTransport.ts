@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import * as Tone from 'tone';
 import { useTransportStore } from '../store/transportStore';
 import { useProjectStore } from '../store/projectStore';
@@ -58,16 +58,6 @@ function trimBuffer(
 export function useTransport() {
   const { isPlaying, currentTime } = useTransportStore();
   const project = useProjectStore((s) => s.project);
-  const scheduledTransportEventIdsRef = useRef<number[]>([]);
-
-  const clearScheduledTransportEvents = useCallback(() => {
-    const transport = Tone.getTransport();
-    transport.stop();
-    for (const id of scheduledTransportEventIdsRef.current) {
-      transport.clear(id);
-    }
-    scheduledTransportEventIdsRef.current = [];
-  }, []);
 
   const play = useCallback(async (fromTime?: number) => {
     const engine = getAudioEngine();
@@ -78,7 +68,7 @@ export function useTransport() {
     const proj = useProjectStore.getState().project;
     if (!proj) return;
 
-    clearScheduledTransportEvents();
+    engine.clearMidiEvents();
 
     // Sync master volume
     engine.masterVolume = proj.masterVolume ?? 1.0;
@@ -163,19 +153,16 @@ export function useTransport() {
       engine.scheduleMetronome(proj.bpm, proj.timeSignature, startFrom, effectiveEnd);
     }
 
-    const transport = Tone.getTransport();
-    transport.bpm.value = proj.bpm;
-    transport.timeSignature = proj.timeSignature;
-
+    // Schedule MIDI events using AudioEngine's time base (RAF-driven),
+    // so playhead and note triggering stay perfectly in sync.
     const secondsPerBeat = 60 / proj.bpm;
     const anySoloed = proj.tracks.some((track) => track.soloed);
 
     for (const track of proj.tracks) {
       if (track.trackType === 'pianoRoll') {
         const preset = track.synthPreset ?? 'piano';
-        const trackNode = engine.getOrCreateTrackNode(track.id);
         synthEngine.removeTrackSynth(track.id);
-        const synth = synthEngine.ensureTrackSynth(track.id, preset, trackNode.inputGain);
+        synthEngine.ensureTrackSynth(track.id, preset);
 
         for (const clip of track.clips) {
           const notes = clip.midiData?.notes ?? [];
@@ -191,11 +178,14 @@ export function useTransport() {
             const scheduledDuration = noteEnd - scheduledStart;
             const velocity = Math.max(0, Math.min(1, note.velocity));
             const freq = Tone.Frequency(note.pitch, 'midi').toFrequency();
+            const trackId = track.id;
 
-            const id = transport.schedule((time) => {
-              synth.triggerAttackRelease(freq, scheduledDuration, time, velocity);
-            }, scheduledStart);
-            scheduledTransportEventIdsRef.current.push(id);
+            engine.scheduleMidiEvent(scheduledStart, () => {
+              const synth = synthEngine.getSynth(trackId);
+              if (synth) {
+                synth.triggerAttackRelease(freq, scheduledDuration, undefined, velocity);
+              }
+            });
           }
         }
       }
@@ -238,47 +228,47 @@ export function useTransport() {
               );
               if (velocity <= 0) continue;
 
-              const id = transport.schedule(() => {
-                void drumEngine.triggerPad(track.id, padIndex, velocity, track.drumKit ?? '808');
-              }, stepTime);
-              scheduledTransportEventIdsRef.current.push(id);
+              const drumKit = track.drumKit ?? '808';
+              const trackId = track.id;
+              engine.scheduleMidiEvent(stepTime, () => {
+                void drumEngine.triggerPad(trackId, padIndex, velocity, drumKit);
+              });
             }
           }
         }
       }
     }
 
-    transport.start(undefined, startFrom);
     useTransportStore.getState().play();
-  }, [clearScheduledTransportEvents]);
+  }, []);
 
   const pause = useCallback(() => {
     const engine = getAudioEngine();
     const time = engine.getCurrentTime();
     engine.stop();
-    clearScheduledTransportEvents();
+    synthEngine.releaseAll();
     useTransportStore.getState().pause();
     useTransportStore.getState().seek(time);
-  }, [clearScheduledTransportEvents]);
+  }, []);
 
   const stop = useCallback(() => {
     const engine = getAudioEngine();
     engine.stop();
-    clearScheduledTransportEvents();
+    synthEngine.releaseAll();
     useTransportStore.getState().stop();
-  }, [clearScheduledTransportEvents]);
+  }, []);
 
   const seek = useCallback((time: number) => {
     const engine = getAudioEngine();
     if (engine.playing) {
       engine.stop();
-      clearScheduledTransportEvents();
+      synthEngine.releaseAll();
       useTransportStore.getState().seek(time);
       play(time);
     } else {
       useTransportStore.getState().seek(time);
     }
-  }, [clearScheduledTransportEvents, play]);
+  }, [play]);
 
   // Register the onEnded callback — respect loopEnabled
   useEffect(() => {

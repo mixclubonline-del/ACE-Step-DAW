@@ -123,6 +123,13 @@ class SynthEngine {
     instance.synth.triggerRelease(freq);
   }
 
+  /** Release all currently sounding notes on all track synths. */
+  releaseAll() {
+    for (const instance of this.synths.values()) {
+      instance.synth.releaseAll();
+    }
+  }
+
   removeTrackSynth(trackId: string) {
     const instance = this.synths.get(trackId);
     if (!instance) return;

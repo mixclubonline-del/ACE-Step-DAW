@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
+import * as Tone from 'tone';
 import { AudioEngine } from '../engine/AudioEngine';
 import { useTransportStore } from '../store/transportStore';
 
@@ -26,7 +27,10 @@ export function useAudioEngine() {
   }, []);
 
   const resumeOnGesture = useCallback(async () => {
-    await engineRef.current.resume();
+    await Promise.all([
+      engineRef.current.resume(),
+      Tone.start(),
+    ]);
   }, []);
 
   return { engine: engineRef.current, resumeOnGesture };
