@@ -387,6 +387,34 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
           </div>
         )}
 
+        {/* MIDI note thumbnail */}
+        {isMidiClip && clip.midiData && clip.midiData.notes.length > 0 && (
+          <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ top: 14 }}>
+            <svg width="100%" height="100%" preserveAspectRatio="none"
+              viewBox={`0 0 ${width} 100`}
+            >
+              {(() => {
+                const notes = clip.midiData!.notes;
+                const bpm = project?.bpm ?? 120;
+                const secPerBeat = 60 / bpm;
+                const clipDur = clip.duration;
+                const pitches = notes.map(n => n.pitch);
+                const minP = Math.min(...pitches);
+                const maxP = Math.max(...pitches);
+                const range = Math.max(maxP - minP, 12);
+                const pad = 2;
+                return notes.map((n, i) => {
+                  const x = (n.startBeat * secPerBeat / clipDur) * width;
+                  const w = Math.max((n.durationBeats * secPerBeat / clipDur) * width, 1);
+                  const y = 100 - ((n.pitch - minP + pad) / (range + pad * 2)) * 100;
+                  const h = Math.max(100 / (range + pad * 2), 2);
+                  return <rect key={i} x={x} y={y} width={w} height={h} fill={track.color} opacity={0.8} rx={0.5} />;
+                });
+              })()}
+            </svg>
+          </div>
+        )}
+
         {/* Label */}
         <div className="absolute top-0 left-1.5 text-[9px] font-medium text-white truncate leading-4 z-10 drop-shadow-sm pointer-events-none"
           style={{ right: totalVersions >= 1 ? '52px' : '6px' }}
