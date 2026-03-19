@@ -10,6 +10,15 @@ WT="/tmp/daw-worktrees/agent-$ISSUE_NUM"
 ps aux | grep -E "claude.*print|node.*codex exec" | grep -v grep | grep -q "issue-$ISSUE_NUM" && echo "SKIP: #$ISSUE_NUM already running" && exit 0
 
 # Get issue info (with timeout)
+# Concurrent limit: max 4 Claude at once (MAX plan limit)
+if [ "$TOOL" = "claude" ]; then
+  CC_COUNT=$(ps aux | grep "claude.*print" | grep -v grep | wc -l | tr -d " ")
+  if [ "$CC_COUNT" -ge 4 ]; then
+    echo "WARN: Claude at capacity ($CC_COUNT), using Codex for #$ISSUE_NUM" >> /tmp/pm-activity.log
+    TOOL="codex"
+  fi
+fi
+
 # Auth check: if Claude requested but auth fails, fallback to Codex
 if [ "$TOOL" = "claude" ]; then
   AUTH_TEST=$(~/.local/bin/claude --print -p "ok" 2>&1 | head -1)
@@ -51,7 +60,7 @@ PROMPT=$(cat "$WT/agent-prompt.txt")
 if [ "$TOOL" = "codex" ]; then
   codex exec -C "$WT" -s danger-full-access "$PROMPT"
 else
-  ~/.local/bin/claude --print --permission-mode bypassPermissions "$PROMPT"
+  ~/.local/bin/claude --print --permission-mode bypassPermissions --fallback-model haiku "$PROMPT"
 fi
 
 # Post-agent: verify + rebase + push + PR
