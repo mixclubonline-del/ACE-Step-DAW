@@ -6,8 +6,11 @@ REPO="ace-step/ACE-Step-DAW"
 DAW="/Users/junmingong/.openclaw/workspace/acestep-daw"
 WT="/tmp/daw-worktrees/agent-$ISSUE_NUM"
 
-# Skip if already running
-ps aux | grep -E "claude.*print|node.*codex exec" | grep -v grep | grep -q "issue-$ISSUE_NUM" && echo "SKIP: #$ISSUE_NUM already running" && exit 0
+# Skip if already running — check for active run-agent.sh process for this exact issue
+if pgrep -f "run-agent.sh.*/tmp/daw-worktrees/agent-$ISSUE_NUM " > /dev/null 2>&1; then
+  echo "SKIP: #$ISSUE_NUM already running"
+  exit 0
+fi
 
 # Get issue info (with timeout)
 # Concurrent limit: max 4 Claude at once (MAX plan limit)
