@@ -42,58 +42,26 @@ Implement the feature/fix. Then:
 
 # ── STEP C: Wrapper handles push + rebase + PR (BASH enforced) ──
 # This runs AFTER the agent exits, guaranteeing rebase happens
-WRAPPER="#!/bin/bash
-cd $WT
+# Write prompt to file (avoid bash escaping issues)
+PROMPT_FILE="$WT/agent-prompt.txt"
+echo "$PROMPT" > "$PROMPT_FILE"
 
-# Run the coding agent
-if [ "$TOOL" = 'codex' ]; then
-  timeout 1800 codex exec -C $WT -s danger-full-access \"$PROMPT\"
+# Write wrapper script
+cat > "$WT/run-agent.sh" << 'WRAPPER_EOF'
+#!/bin/bash
+cd "$1"  # worktree path passed as arg
+PROMPT=$(cat "$1/agent-prompt.txt")
+
+# Run the coding agent (30 min timeout)
+if [ "$2" = "codex" ]; then
+  timeout 1800 codex exec -C "$1" -s danger-full-access "$PROMPT"
 else
-  timeout 1800 $HOME/.local/bin/claude --print --permission-mode bypassPermissions \"$PROMPT\"
+  timeout 1800 ~/.local/bin/claude --print --permission-mode bypassPermissions "$PROMPT"
 fi
 
-# ── Safety checks before push ──
-cd $WT
-
-# Check: did the agent actually commit anything?
-COMMITS_AHEAD=\$(git rev-list origin/main..HEAD --count 2>/dev/null)
-if [ "\$COMMITS_AHEAD" = "0" ] || [ -z "\$COMMITS_AHEAD" ]; then
-  echo 'SKIP: agent produced no commits, nothing to push'
-  exit 0
-fi
-
-# Check: does it build?
-npm run build 2>/dev/null || {
-  echo 'WARN: build failed, skipping push'
-  exit 0
-}
-
-# Check: did agent write tests? (SOP requires TDD)
-NEW_TEST_FILES=$(git diff --name-only origin/main | grep -c 'test\.ts\|spec\.ts' || true)
-if [ "$NEW_TEST_FILES" = "0" ]; then
-  echo 'NOTE: no new test files — SOP recommends TDD'
-fi
-
-# ENFORCED: rebase onto latest main
-git fetch origin main 2>/dev/null
-git rebase origin/main 2>/dev/null || {
-  # Rebase conflict — let it stay, PM will detect and dispatch a fixer
-  git rebase --abort 2>/dev/null
-  echo 'WARN: rebase conflict, leaving for PM to handle'
-  exit 0
-}
-
-# ENFORCED: push (force-with-lease to not overwrite others)
-git -c user.name=ChuxiJ -c user.email=junmin@acestudio.ai push origin fix/issue-$ISSUE_NUM --force-with-lease 2>/dev/null || {
-  echo 'WARN: push failed (force-with-lease rejected)'
-  exit 0
-}
-
-# ENFORCED: create PR
-gh pr create --repo $REPO --title 'feat: #$ISSUE_NUM — $TITLE' --body 'Closes #$ISSUE_NUM' --base main --head fix/issue-$ISSUE_NUM 2>/dev/null || true
-"
-
-echo "$WRAPPER" > "$WT/run-agent.sh"
+WRAPPER_EOF
 chmod +x "$WT/run-agent.sh"
-nohup bash "$WT/run-agent.sh" > "/tmp/daw-worktrees/agent-$ISSUE_NUM.${TOOL}.log" 2>&1 &
+
+chmod +x "$WT/run-agent.sh"
+nohup bash "$WT/run-agent.sh" "$WT" "$TOOL" > "/tmp/daw-worktrees/agent-$ISSUE_NUM.${TOOL}.log" 2>&1 &
 echo "$TOOL-$ISSUE_NUM: PID $!"
