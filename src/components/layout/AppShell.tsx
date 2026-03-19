@@ -29,6 +29,7 @@ import { DrumMachineEditor } from '../sequencer/DrumMachineEditor';
 import { SmartControlsPanel } from '../controls/SmartControlsPanel';
 import { PianoRoll } from '../pianoroll/PianoRoll';
 import { EffectChain } from '../mixer/EffectChain';
+import { SessionView } from '../session/SessionView';
 import { ToastContainer } from '../ui/Toast';
 import { UndoHistoryPanel } from './UndoHistoryPanel';
 import { useAudioEngine } from '../../hooks/useAudioEngine';
@@ -43,6 +44,7 @@ export function AppShell() {
   const project = useProjectStore((s) => s.project);
   const setShowNewProjectDialog = useUIStore((s) => s.setShowNewProjectDialog);
   const setHistoryFocusScope = useUIStore((s) => s.setHistoryFocusScope);
+  const mainView = useUIStore((s) => s.mainView);
   const [audioResumed, setAudioResumed] = useState(false);
 
   const handleClick = useCallback(async () => {
@@ -86,9 +88,16 @@ export function AppShell() {
       )}
       <Toolbar />
 
-      <div className="flex flex-1 min-h-0" onMouseDownCapture={() => setHistoryFocusScope('arrangement')}>
-        {project && <TrackList />}
-        <Timeline />
+      <div
+        className="flex flex-1 min-h-0"
+        onMouseDownCapture={() => {
+          if (mainView === 'arrangement') {
+            setHistoryFocusScope('arrangement');
+          }
+        }}
+      >
+        {project && mainView === 'arrangement' && <TrackList />}
+        {mainView === 'arrangement' ? <Timeline /> : <SessionView />}
         {project && <LoopBrowser />}
       </div>
 
