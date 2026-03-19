@@ -64,6 +64,9 @@ interface UIState {
   analysisClipId: string | null;
   stemSeparationClipId: string | null;
 
+  // Spectrum analyzer & loudness metering
+  showSpectrumAnalyzer: boolean;
+
   // Quantize dialog
   showQuantizeDialog: boolean;
   /** Clip ID + selected note IDs passed from the piano roll to the quantize dialog. */
@@ -130,6 +133,10 @@ interface UIState {
   setAnalysisPanel: (clipId: string | null) => void;
   setStemSeparationModal: (clipId: string | null) => void;
 
+  // Spectrum analyzer & loudness metering
+  setShowSpectrumAnalyzer: (v: boolean) => void;
+  toggleSpectrumAnalyzer: () => void;
+
   // Quantize dialog
   setShowQuantizeDialog: (v: boolean) => void;
   setQuantizeTarget: (target: { clipId: string; noteIds: string[] } | null) => void;
@@ -195,6 +202,8 @@ export const useUIStore = create<UIState>()(
   vocal2bgmClipId: null,
   analysisClipId: null,
   stemSeparationClipId: null,
+
+  showSpectrumAnalyzer: false,
 
   showQuantizeDialog: false,
   quantizeTarget: null,
@@ -293,6 +302,9 @@ export const useUIStore = create<UIState>()(
   setAnalysisPanel: (clipId) => set({ analysisClipId: clipId }),
   setStemSeparationModal: (clipId) => set({ stemSeparationClipId: clipId }),
 
+  setShowSpectrumAnalyzer: (v) => set({ showSpectrumAnalyzer: v }),
+  toggleSpectrumAnalyzer: () => set((s) => ({ showSpectrumAnalyzer: !s.showSpectrumAnalyzer })),
+
   setShowQuantizeDialog: (v) => set(v ? { showQuantizeDialog: v } : { showQuantizeDialog: false, quantizeTarget: null }),
   setQuantizeTarget: (target) => set({ quantizeTarget: target }),
   openQuantizeDialog: (clipId, noteIds) => set({ showQuantizeDialog: true, quantizeTarget: { clipId, noteIds } }),
@@ -321,6 +333,8 @@ export const useUIStore = create<UIState>()(
         pixelsPerSecond: state.pixelsPerSecond,
         // Snap
         snapEnabled: state.snapEnabled,
+        // Spectrum analyzer
+        showSpectrumAnalyzer: state.showSpectrumAnalyzer,
         // Loop Browser preference
         loopBrowserCategory: state.loopBrowserCategory,
       }),
