@@ -33,9 +33,10 @@ STEPS:
 2. Implement the feature/fix
 3. npx tsc --noEmit && npm run build && npx vitest run tests/unit/
 4. git -c user.name=ChuxiJ -c user.email=junmin@acestudio.ai add -A && git commit -m 'feat: resolve #$ISSUE_NUM — $TITLE'
-5. git push origin fix/issue-$ISSUE_NUM --force
-6. gh pr create --repo $REPO --title 'feat: #$ISSUE_NUM — $TITLE' --body 'Closes #$ISSUE_NUM' --base main --head fix/issue-$ISSUE_NUM || true
-7. If push conflicts: git fetch origin main && git rebase origin/main && fix && push again"
+5. git fetch origin main && git rebase origin/main (resolve any conflicts before pushing)
+6. git push origin fix/issue-$ISSUE_NUM --force
+7. gh pr create --repo $REPO --title 'feat: #$ISSUE_NUM — $TITLE' --body 'Closes #$ISSUE_NUM' --base main --head fix/issue-$ISSUE_NUM || true
+8. If push conflicts: git fetch origin main && git rebase origin/main && fix && push again"
 
 if [ "$TOOL" = "codex" ]; then
   nohup codex exec -C "$WT" -s danger-full-access "$PROMPT" > "/tmp/daw-worktrees/agent-$ISSUE_NUM.codex.log" 2>&1 &
