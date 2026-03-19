@@ -35,6 +35,7 @@ interface UIState {
   showExportDialog: boolean;
   showSettingsDialog: boolean;
   showProjectListDialog: boolean;
+  bounceInPlaceTrackId: string | null;
   /** Controls the BatchGenerateModal — lifted from GenerationPanel so keyboard shortcuts can open it. */
   batchGenerateMode: 'silence' | 'context' | null;
   /** Optional time range pre-filled into BatchGenerateModal when opened from a lane drag-select or context menu. */
@@ -131,6 +132,8 @@ interface UIState {
   setShowExportDialog: (v: boolean) => void;
   setShowSettingsDialog: (v: boolean) => void;
   setShowProjectListDialog: (v: boolean) => void;
+  openBounceInPlaceDialog: (trackId: string) => void;
+  closeBounceInPlaceDialog: () => void;
   setBatchGenerateMode: (mode: 'silence' | 'context' | null) => void;
   setBatchGenerateInitialRange: (v: { startTime: number; duration: number } | null) => void;
   setShowKeyboardShortcutsDialog: (v: boolean) => void;
@@ -228,6 +231,7 @@ export const useUIStore = create<UIState>()(
   showExportDialog: false,
   showSettingsDialog: false,
   showProjectListDialog: false,
+  bounceInPlaceTrackId: null,
   batchGenerateMode: null,
   batchGenerateInitialRange: null,
   showKeyboardShortcutsDialog: false,
@@ -333,6 +337,8 @@ export const useUIStore = create<UIState>()(
   setShowExportDialog: (v) => set({ showExportDialog: v }),
   setShowSettingsDialog: (v) => set({ showSettingsDialog: v }),
   setShowProjectListDialog: (v) => set({ showProjectListDialog: v }),
+  openBounceInPlaceDialog: (trackId) => set({ bounceInPlaceTrackId: trackId }),
+  closeBounceInPlaceDialog: () => set({ bounceInPlaceTrackId: null }),
   setBatchGenerateMode: (mode) => set(mode === null
     ? { batchGenerateMode: null, batchGenerateInitialRange: null }
     : { batchGenerateMode: mode }),
