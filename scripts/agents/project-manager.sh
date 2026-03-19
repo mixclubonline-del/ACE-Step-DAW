@@ -1,82 +1,48 @@
 #!/bin/bash
-# Project Manager — Intelligent Agent Orchestrator
-# PRIORITY ORDER: 1) Merge ready PRs  2) Balance team  3) Trigger maintenance
+# Project Manager — Intelligent Brain (no hardcoded thresholds)
 set -e
 cd /Users/junmingong/.openclaw/workspace/acestep-daw
 REPO="ace-step/ACE-Step-DAW"
 
-echo "=== PM Brain $(date) ==="
-
-##############################################
-# STEP 1: MERGE — Always check first
-##############################################
-echo "--- Step 1: Merge ready PRs ---"
-READY_PRS=$(gh pr list --repo $REPO --state open --json number,isDraft,mergeable --jq '.[] | select(.isDraft==false) | "\(.number) \(.mergeable)"')
-MERGED_COUNT=0
-echo "$READY_PRS" | while read -r NUM MERGEABLE; do
-  [ -z "$NUM" ] && continue
-  if [ "$MERGEABLE" = "MERGEABLE" ]; then
-    # Check CI
-    FAIL_COUNT=$(gh pr checks $NUM --repo $REPO 2>&1 | grep -c "fail" || true)
-    PENDING_COUNT=$(gh pr checks $NUM --repo $REPO 2>&1 | grep -c "pending" || true)
-    if [ "$FAIL_COUNT" = "0" ] && [ "$PENDING_COUNT" = "0" ]; then
-      echo "  ✅ Merging PR #$NUM"
-      gh pr merge $NUM --repo $REPO --squash --admin 2>/dev/null || true
-      MERGED_COUNT=$((MERGED_COUNT + 1))
-    else
-      echo "  ⏳ PR #$NUM: CI pending or failed"
-    fi
-  elif [ "$MERGEABLE" = "CONFLICTING" ]; then
-    echo "  ⚠️ PR #$NUM: CONFLICT — launching rebase agent"
-    BRANCH=$(gh pr view $NUM --repo $REPO --json headRefName --jq .headRefName)
-    ~/.local/bin/claude --print --permission-mode bypassPermissions \
-      "cd /Users/junmingong/.openclaw/workspace/acestep-daw && git fetch origin && git checkout $BRANCH && git rebase origin/main && git push --force-with-lease origin $BRANCH && git checkout main" &
-  fi
-done
-
-##############################################
-# STEP 2: BALANCE — Adjust team size
-##############################################
-echo "--- Step 2: Balance team ---"
-OPEN_ISSUES=$(gh issue list --repo $REPO --state open --json number --jq length)
-OPEN_PRS=$(gh pr list --repo $REPO --state open --json number --jq length)
+# Gather all context
+ISSUES=$(gh issue list --repo $REPO --state open --limit 30 --json number,title,labels,assignees 2>/dev/null)
+PRS=$(gh pr list --repo $REPO --state open --limit 20 --json number,title,isDraft,mergeable,statusCheckRollup 2>/dev/null)
+RECENT_MERGED=$(gh pr list --repo $REPO --state merged --limit 5 --json number,title 2>/dev/null)
 RUNNING_CLI=$(ps aux | grep 'claude.*print' | grep -v grep | wc -l | tr -d ' ')
+RECENT_LOG=$(git log --oneline -10 2>/dev/null)
+LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1 2>/dev/null)
 
-echo "  Issues: $OPEN_ISSUES | PRs: $OPEN_PRS | CLI: $RUNNING_CLI"
+# Let the brain decide everything
+~/.local/bin/claude --print --permission-mode bypassPermissions --allowedTools 'Edit,Write,Read,Bash' \
+  "You are the Project Manager brain for ACE-Step DAW. Make ALL decisions yourself — no hardcoded rules.
 
-if [ "$OPEN_ISSUES" -lt 3 ]; then
-  echo "  → Issues low: launching Researcher + PM to create more"
-  bash scripts/agents/researcher.sh &
-  bash scripts/agents/product-manager-review.sh &
-elif [ "$OPEN_ISSUES" -gt 5 ] && [ "$RUNNING_CLI" -lt 3 ]; then
-  echo "  → Issues high, devs low: launching developers"
-  TOP_ISSUES=$(gh issue list --repo $REPO --state open --label "role: developer" --json number,title --jq '.[0:3][] | .number')
-  for NUM in $TOP_ISSUES; do
-    TITLE=$(gh issue view $NUM --repo $REPO --json title --jq .title)
-    echo "    Launching dev for #$NUM: $TITLE"
-    ~/.local/bin/claude --print --permission-mode bypassPermissions \
-      "Implement issue #$NUM ($TITLE) in /Users/junmingong/.openclaw/workspace/acestep-daw. git fetch origin && git reset --hard origin/main. Build, test, create PR." &
-    sleep 2
-  done
-fi
+CURRENT STATE:
+- Open issues: $ISSUES
+- Open PRs: $PRS
+- Recently merged: $RECENT_MERGED
+- Running CLI agents: $RUNNING_CLI
+- Recent commits: $RECENT_LOG
+- Last release tag: $LAST_TAG
+- Max recommended CLI concurrency: 5
+- Repo: $REPO
+- Workspace: /Users/junmingong/.openclaw/workspace/acestep-daw
 
-##############################################
-# STEP 3: MAINTENANCE — Refactor + Release
-##############################################
-TOTAL_COMMITS=$(git rev-list --count HEAD)
-LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
+YOUR RESPONSIBILITIES (in priority order):
 
-if [ $((TOTAL_COMMITS % 20)) -eq 0 ] 2>/dev/null; then
-  echo "--- Step 3a: Triggering refactorer ---"
-  bash scripts/agents/refactorer.sh &
-fi
+1. MERGE: Check each open PR. If non-draft, CI all pass, mergeable — merge it now:
+   gh pr merge NUMBER --squash --admin --repo $REPO
 
-if [ -n "$LAST_TAG" ]; then
-  FEATS_SINCE=$(git log ${LAST_TAG}..HEAD --oneline --grep='feat:' | wc -l | tr -d ' ')
-  if [ "$FEATS_SINCE" -ge 5 ]; then
-    echo "--- Step 3b: $FEATS_SINCE features since $LAST_TAG → Release eval ---"
-    bash scripts/agents/release-manager.sh &
-  fi
-fi
+2. FIX: If a PR has conflicts, rebase it. If CI failed, figure out why.
 
-echo "=== PM Done ==="
+3. STAFF: Look at open issues vs running CLI agents. Decide how many more to launch.
+   Consider: are the issues simple (1 CLI enough) or complex (needs focused attention)?
+   Are there bugs (P0) that need urgent attention vs features that can wait?
+   To launch a dev: ~/.local/bin/claude --print --permission-mode bypassPermissions 'Implement issue #N ...' &
+
+4. REVIEW: Check recently merged PRs. Do they have tests? If not, note it.
+
+5. RELEASE: If enough meaningful work accumulated since last tag, consider triggering release.
+
+6. HEALTH: Are too many CLI agents fighting over the same files? Should some be killed?
+
+Think step by step. Explain your reasoning briefly. Then execute your decisions."
