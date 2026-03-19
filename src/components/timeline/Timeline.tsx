@@ -250,6 +250,7 @@ export function Timeline() {
       if (target.closest?.('[data-clip-block]')) return;
       if (target.closest?.('.fixed')) return;
       if (target.closest?.('[data-sequencer-grid]')) return;
+      if (target.closest?.('[data-timeline-scrubber="true"]')) return;
 
       const isCtx = e.altKey;
       const isSel = !isCtx && (e.metaKey || e.ctrlKey);
