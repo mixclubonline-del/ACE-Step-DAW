@@ -41,9 +41,9 @@ cd $WT
 
 # Run the coding agent
 if [ "$TOOL" = 'codex' ]; then
-  codex exec -C $WT -s danger-full-access \"$PROMPT\"
+  timeout 1800 codex exec -C $WT -s danger-full-access \"$PROMPT\"
 else
-  $HOME/.local/bin/claude --print --permission-mode bypassPermissions \"$PROMPT\"
+  timeout 1800 $HOME/.local/bin/claude --print --permission-mode bypassPermissions \"$PROMPT\"
 fi
 
 # ── Safety checks before push ──
