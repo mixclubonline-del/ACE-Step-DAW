@@ -10,6 +10,15 @@ WT="/tmp/daw-worktrees/agent-$ISSUE_NUM"
 ps aux | grep -E "claude.*print|node.*codex exec" | grep -v grep | grep -q "issue-$ISSUE_NUM" && echo "SKIP: #$ISSUE_NUM already running" && exit 0
 
 # Get issue info (with timeout)
+# Auth check: if Claude requested but auth fails, fallback to Codex
+if [ "$TOOL" = "claude" ]; then
+  AUTH_TEST=$(~/.local/bin/claude --print -p "ok" 2>&1 | head -1)
+  if echo "$AUTH_TEST" | grep -qi "403\|forbidden\|authenticate"; then
+    echo "WARN: Claude auth failed, falling back to Codex for #$ISSUE_NUM" >> /tmp/pm-activity.log
+    TOOL="codex"
+  fi
+fi
+
 TITLE=$(timeout 10 gh issue view $ISSUE_NUM --repo $REPO --json title --jq .title 2>/dev/null || echo "issue $ISSUE_NUM")
 
 # Clean worktree
