@@ -1,0 +1,178 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { AddLayerPanel } from '../AddLayerPanel';
+import { useProjectStore } from '../../../store/projectStore';
+import { useUIStore } from '../../../store/uiStore';
+import { useGenerationStore } from '../../../store/generationStore';
+
+// Mock external dependencies
+vi.mock('../../../services/projectStorage', () => ({
+  saveProject: vi.fn(),
+}));
+
+vi.mock('../../../services/generationPipeline', () => ({
+  generateFromAddLayer: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../services/lazyContextAudioExtractor', () => ({
+  extractContextAudioLazy: vi.fn().mockResolvedValue(null),
+}));
+
+function setupProject() {
+  useProjectStore.setState({ project: null });
+  useProjectStore.getState().createProject();
+  useUIStore.setState({
+    addLayerOpen: true,
+    selectWindow: { startTime: 3, endTime: 7, trackIds: [] },
+    contextWindow: null,
+  });
+}
+
+describe('AddLayerPanel', () => {
+  beforeEach(() => {
+    setupProject();
+  });
+
+  it('renders nothing when addLayerOpen is false', () => {
+    useUIStore.setState({ addLayerOpen: false });
+    const { container } = render(<AddLayerPanel />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('renders the panel when addLayerOpen is true', () => {
+    render(<AddLayerPanel />);
+    expect(screen.getByTestId('add-layer-panel')).toBeInTheDocument();
+    expect(screen.getByText('Add a Layer')).toBeInTheDocument();
+  });
+
+  it('displays the selection range from uiStore selectWindow', () => {
+    render(<AddLayerPanel />);
+    expect(screen.getByText(/3\.0s/)).toBeInTheDocument();
+    expect(screen.getByText(/7\.0s/)).toBeInTheDocument();
+  });
+
+  it('renders layer type buttons', () => {
+    render(<AddLayerPanel />);
+    expect(screen.getByText('Song Track')).toBeInTheDocument();
+    expect(screen.getByText('Vocal')).toBeInTheDocument();
+    expect(screen.getByText('Backing')).toBeInTheDocument();
+    expect(screen.getByText('Custom')).toBeInTheDocument();
+  });
+
+  it('shows lyrics textarea when Vocal layer type is selected', () => {
+    render(<AddLayerPanel />);
+    // Lyrics should not be visible by default (Song Track selected)
+    expect(screen.queryByPlaceholderText('Song lyrics...')).not.toBeInTheDocument();
+
+    // Click Vocal
+    fireEvent.click(screen.getByText('Vocal'));
+    expect(screen.getByPlaceholderText('Song lyrics...')).toBeInTheDocument();
+  });
+
+  it('shows lyrics textarea when Backing layer type is selected', () => {
+    render(<AddLayerPanel />);
+    fireEvent.click(screen.getByText('Backing'));
+    expect(screen.getByPlaceholderText('Song lyrics...')).toBeInTheDocument();
+  });
+
+  it('hides lyrics textarea when Song Track layer type is selected', () => {
+    render(<AddLayerPanel />);
+    fireEvent.click(screen.getByText('Vocal'));
+    expect(screen.getByPlaceholderText('Song lyrics...')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Song Track'));
+    expect(screen.queryByPlaceholderText('Song lyrics...')).not.toBeInTheDocument();
+  });
+
+  it('has a collapsed Advanced section by default', () => {
+    render(<AddLayerPanel />);
+    expect(screen.getByText(/Advanced/)).toBeInTheDocument();
+    // Seed input should not be visible
+    expect(screen.queryByPlaceholderText('Leave empty for random')).not.toBeInTheDocument();
+  });
+
+  it('expands Advanced section on click', () => {
+    render(<AddLayerPanel />);
+    fireEvent.click(screen.getByText(/Advanced/));
+    expect(screen.getByPlaceholderText('Leave empty for random')).toBeInTheDocument();
+    expect(screen.getByText('Sample mode')).toBeInTheDocument();
+    expect(screen.getByText('Auto-expand prompt')).toBeInTheDocument();
+    expect(screen.getByText(/Mask mode/)).toBeInTheDocument();
+  });
+
+  it('shows context info in Advanced when contextWindow is set', () => {
+    useUIStore.setState({
+      contextWindow: { startTime: 1, endTime: 5, trackIds: [] },
+    });
+    render(<AddLayerPanel />);
+    fireEvent.click(screen.getByText(/Advanced/));
+    expect(screen.getByText(/1\.0s/)).toBeInTheDocument();
+    expect(screen.getByText(/5\.0s/)).toBeInTheDocument();
+  });
+
+  it('shows "none" context message when no contextWindow', () => {
+    render(<AddLayerPanel />);
+    fireEvent.click(screen.getByText(/Advanced/));
+    expect(screen.getByText(/Context: none/)).toBeInTheDocument();
+  });
+
+  it('has no backdrop overlay — floating panel only', () => {
+    const { container } = render(<AddLayerPanel />);
+    // The panel should not have a fixed inset-0 backdrop
+    const backdrop = container.querySelector('.fixed.inset-0');
+    expect(backdrop).toBeNull();
+  });
+
+  it('closes the panel when close button is clicked', () => {
+    render(<AddLayerPanel />);
+    fireEvent.click(screen.getByLabelText('Close'));
+    expect(useUIStore.getState().addLayerOpen).toBe(false);
+  });
+
+  it('closes the panel on Escape key', () => {
+    render(<AddLayerPanel />);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useUIStore.getState().addLayerOpen).toBe(false);
+  });
+
+  it('has a Generate button', () => {
+    render(<AddLayerPanel />);
+    expect(screen.getByText('Generate')).toBeInTheDocument();
+  });
+
+  it('disables Generate button when generating', () => {
+    useGenerationStore.setState({ isGenerating: true });
+    render(<AddLayerPanel />);
+    const btn = screen.getByText(/Generating/);
+    expect(btn).toBeDisabled();
+  });
+
+  it('shows "Select the whole song" button when selection is partial', () => {
+    render(<AddLayerPanel />);
+    expect(screen.getByText('+ Select the whole song')).toBeInTheDocument();
+  });
+
+  it('does not show "Select the whole song" when selection covers full song', () => {
+    const totalDuration = useProjectStore.getState().project!.totalDuration;
+    useUIStore.setState({
+      selectWindow: { startTime: 0, endTime: totalDuration, trackIds: [] },
+    });
+    render(<AddLayerPanel />);
+    expect(screen.queryByText('+ Select the whole song')).not.toBeInTheDocument();
+  });
+
+  it('renders style textarea', () => {
+    render(<AddLayerPanel />);
+    expect(screen.getByPlaceholderText('Describe the sound...')).toBeInTheDocument();
+  });
+
+  it('applies active styling to selected layer type pill', () => {
+    render(<AddLayerPanel />);
+    const songBtn = screen.getByText('Song Track');
+    // Song Track should have teal active styling
+    expect(songBtn.className).toContain('bg-teal-600');
+
+    const vocalBtn = screen.getByText('Vocal');
+    expect(vocalBtn.className).not.toContain('bg-teal-600');
+  });
+});
