@@ -89,6 +89,13 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
   const [scissorLine, setScissorLine] = useState<number | null>(null);
   const scissorRef = useRef(false);
 
+  // Cleanup cursor on unmount if scissor mode was active
+  useEffect(() => {
+    return () => {
+      if (scissorRef.current) document.body.style.cursor = '';
+    };
+  }, []);
+
   const editingClipId = useUIStore((s) => s.editingClipId);
   useEffect(() => {
     if (editingClipId === clip.id) {
@@ -191,8 +198,10 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
 
     const onMouseMove = (ev: MouseEvent) => {
       // If in scissor mode, just update the split line position
-      if (scissorRef.current && clipRect) {
-        const relX = ev.clientX - clipRect.left;
+      if (scissorRef.current) {
+        const liveRect = clipBlockRef.current?.getBoundingClientRect();
+        if (!liveRect) return;
+        const relX = ev.clientX - liveRect.left;
         const splitTime = origStart + relX / pixelsPerSecond;
         const snapped = ev.altKey ? splitTime : snapToGrid(splitTime, bpm, 1);
         const snappedPx = (snapped - origStart) * pixelsPerSecond;
@@ -331,11 +340,13 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
       if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
 
       // Execute scissor split
-      if (scissorRef.current && clipRect) {
+      if (scissorRef.current) {
         scissorRef.current = false;
         setScissorLine(null);
         document.body.style.cursor = '';
-        const relX = ev.clientX - clipRect.left;
+        const liveRect = clipBlockRef.current?.getBoundingClientRect();
+        if (!liveRect) return;
+        const relX = ev.clientX - liveRect.left;
         const splitTime = origStart + relX / pixelsPerSecond;
         const snapped = ev.altKey ? splitTime : snapToGrid(splitTime, bpm, 1);
         // Only split if within clip bounds (not at edges)
@@ -721,7 +732,9 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
           onSplitAtPlayhead={() => {
             closeCtxMenu();
             const currentTime = useTransportStore.getState().currentTime;
-            void splitClipAtZeroCrossing(clip.id, currentTime);
+            if (currentTime > clip.startTime + 0.01 && currentTime < clip.startTime + clip.duration - 0.01) {
+              void splitClipAtZeroCrossing(clip.id, currentTime);
+            }
           }}
           onDuplicate={() => { closeCtxMenu(); duplicateClip(clip.id); }}
           onConsolidate={() => { void handleConsolidate(); }}

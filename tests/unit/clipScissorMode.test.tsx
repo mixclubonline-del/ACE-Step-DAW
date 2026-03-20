@@ -145,4 +145,43 @@ describe('ClipBlock scissor mode', () => {
     // Cursor should be restored
     expect(document.body.style.cursor).toBe('');
   });
+
+  it('executes split on mouseup after long-press (happy path)', () => {
+    const clip = makeClip({ startTime: 2.0, duration: 4.0 });
+    const track = makeTrack({ clips: [clip] });
+
+    // Set pixelsPerSecond to 100 for easy calculation
+    useUIStore.setState({ pixelsPerSecond: 100 });
+
+    const { container } = render(<ClipBlock clip={clip} track={track} />);
+    const clipEl = container.querySelector('[data-clip-block]') as HTMLElement;
+    if (!clipEl) return;
+
+    // clipRect: left=200 (startTime 2.0 * 100px/s), width=400 (4.0s * 100px/s)
+    vi.spyOn(clipEl, 'getBoundingClientRect').mockReturnValue({
+      left: 200, right: 600, top: 0, bottom: 48, width: 400, height: 48,
+      x: 200, y: 0, toJSON: () => {},
+    });
+
+    // Click at pixel 350 = 150px into clip = startTime + 1.5s = 3.5s
+    act(() => {
+      clipEl.dispatchEvent(new MouseEvent('mousedown', { clientX: 350, clientY: 24, button: 0, bubbles: true }));
+    });
+
+    // Wait for long-press
+    act(() => { vi.advanceTimersByTime(400); });
+
+    // Release at same position
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 350, clientY: 24 }));
+    });
+
+    // Should have called splitClipAtZeroCrossing with clip-1 and a time around 3.5s (snapped to grid)
+    expect(mockSplitClipAtZeroCrossing).toHaveBeenCalledOnce();
+    expect(mockSplitClipAtZeroCrossing).toHaveBeenCalledWith('clip-1', expect.any(Number));
+    const splitTime = mockSplitClipAtZeroCrossing.mock.calls[0][1];
+    // Should be within clip bounds (2.0 to 6.0) and roughly near 3.5s
+    expect(splitTime).toBeGreaterThan(2.01);
+    expect(splitTime).toBeLessThan(5.99);
+  });
 });
