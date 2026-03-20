@@ -141,6 +141,9 @@ export interface UIState {
   showGeneratePatternDialog: boolean;
   generatePatternClipId: string | null;
 
+  // Add Layer Panel (floating, no backdrop)
+  addLayerOpen: boolean;
+
   // Generation Side Panel
   showGenerationPanel: boolean;
 
@@ -262,6 +265,9 @@ export interface UIState {
   // Generate pattern dialog
   setShowGeneratePatternDialog: (v: boolean) => void;
   openGeneratePatternDialog: (clipId: string) => void;
+
+  // Add Layer Panel
+  setAddLayerOpen: (v: boolean) => void;
 
   // Generation Side Panel
   toggleGenerationPanel: () => void;
@@ -422,6 +428,8 @@ export const useUIStore = create<UIState>()(
 
   showGeneratePatternDialog: false,
   generatePatternClipId: null,
+
+  addLayerOpen: false,
 
   showGenerationPanel: false,
 
@@ -678,6 +686,8 @@ export const useUIStore = create<UIState>()(
 
   setShowGeneratePatternDialog: (v) => set(v ? { showGeneratePatternDialog: v } : { showGeneratePatternDialog: false, generatePatternClipId: null }),
   openGeneratePatternDialog: (clipId) => set({ showGeneratePatternDialog: true, generatePatternClipId: clipId }),
+
+  setAddLayerOpen: (v) => set({ addLayerOpen: v }),
 
   toggleGenerationPanel: () => set((s) => ({ showGenerationPanel: !s.showGenerationPanel })),
   setShowGenerationPanel: (v) => set({ showGenerationPanel: v }),

@@ -5,6 +5,7 @@ import { TrackList } from '../tracks/TrackList';
 import { Timeline } from '../timeline/Timeline';
 import { Z } from '../../utils/zIndex';
 import { GenerationPanel } from '../generation/GenerationPanel';
+import { AddLayerPanel } from '../generation/AddLayerPanel';
 import { GenerationSidePanel } from '../generation/GenerationSidePanel';
 import { CoverModal } from '../generation/CoverModal';
 import { RepaintModal } from '../generation/RepaintModal';
@@ -174,6 +175,7 @@ export function AppShell() {
       {project && <MixerPanel />}
       {project && <GenerationPanel />}
       {project && <GenerationSidePanel />}
+      {project && <AddLayerPanel />}
       <StatusBar />
       <ToastContainer />
       <UndoHistoryPanel />
