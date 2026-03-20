@@ -86,6 +86,19 @@ function shouldDeferToPianoRollTools(event: KeyboardEvent): boolean {
   return ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'KeyB'].includes(event.code);
 }
 
+export function shouldDeferToDrumMachine(event: KeyboardEvent): boolean {
+  const ui = useUIStore.getState();
+  if (ui.keyboardContext.scope !== 'drumMachine') return false;
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+  // All 16 drum pad key codes
+  return [
+    'KeyZ', 'KeyX', 'KeyC', 'KeyV',
+    'KeyA', 'KeyS', 'KeyD', 'KeyF',
+    'KeyQ', 'KeyW', 'KeyE', 'KeyR',
+    'Digit1', 'Digit2', 'Digit3', 'Digit4',
+  ].includes(event.code);
+}
+
 export function useKeyboardShortcuts() {
   const { play, pause, stop, seek } = useTransport();
   const { toggleRecord, toggleArmTrack } = useRecording();
@@ -290,6 +303,7 @@ export function useKeyboardShortcuts() {
       if (mod) return;
       if (anyModalOpen) return;
       if (shouldDeferToPianoRollTools(event)) return;
+      if (shouldDeferToDrumMachine(event)) return;
 
       if (matches('view.toggleSessionView')) {
         event.preventDefault();

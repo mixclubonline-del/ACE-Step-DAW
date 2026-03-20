@@ -598,13 +598,16 @@ export const useUIStore = create<UIState>()(
     historyFocusTrackId: id,
     historyFocusClipId: null,
   }),
-  setOpenDrumMachineTrackId: (id) => set({
+  setOpenDrumMachineTrackId: (id) => set((state) => ({
+    keyboardContext: id
+      ? { scope: 'drumMachine' as const, trackId: id }
+      : { scope: 'timeline' as const, trackId: state.keyboardContext.trackId },
     openDrumMachineTrackId: id,
     activeBottomPanel: id ? 'drumMachine' : null,
     historyFocusScope: id ? 'track' : 'arrangement',
     historyFocusTrackId: id,
     historyFocusClipId: null,
-  }),
+  })),
   setOpenPianoRoll: (trackId, clipId = null) => set((state) => ({
     keyboardContext: trackId ? { scope: 'pianoRoll', trackId } : state.keyboardContext,
     openPianoRollTrackId: trackId,
