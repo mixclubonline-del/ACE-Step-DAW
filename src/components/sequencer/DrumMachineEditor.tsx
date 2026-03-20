@@ -88,9 +88,11 @@ export function DrumMachineEditor() {
     [triggerPad],
   );
 
-  // Keyboard mapping
+  // Keyboard mapping — only process pad keys when drum machine has keyboard focus
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const scope = useUIStore.getState().keyboardContext.scope;
+      if (scope !== 'drumMachine') return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const key = e.key.toLowerCase();
@@ -103,6 +105,13 @@ export function DrumMachineEditor() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [triggerPad]);
+
+  // Set keyboard context to drumMachine when clicking inside the editor
+  const handleEditorFocus = useCallback(() => {
+    if (trackId) {
+      useUIStore.getState().setKeyboardContext('drumMachine', trackId);
+    }
+  }, [trackId]);
 
   // Cleanup timeouts
   useEffect(() => {
@@ -139,8 +148,8 @@ export function DrumMachineEditor() {
       className="flex flex-col border-t border-white/10 bg-[#1a1a2e]"
       style={{ height: editorHeight }}
       data-track-id={trackId}
-      onMouseDownCapture={() => setHistoryFocusScope('track')}
-      onFocusCapture={() => setHistoryFocusScope('track')}
+      onMouseDownCapture={() => { setHistoryFocusScope('track'); handleEditorFocus(); }}
+      onFocusCapture={() => { setHistoryFocusScope('track'); handleEditorFocus(); }}
     >
       {/* Resize handle */}
       <div

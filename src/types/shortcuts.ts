@@ -46,7 +46,8 @@ export type ShortcutContext =
   | 'global'
   | 'timeline'
   | 'pianoRoll'
-  | 'mixer';
+  | 'mixer'
+  | 'drumMachine';
 
 /** A complete set of overrides keyed by actionId. */
 export type ShortcutMap = Record<string, KeyCombo>;
