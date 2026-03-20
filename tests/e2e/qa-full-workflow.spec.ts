@@ -11,6 +11,7 @@ import {
   createProjectViaDialog,
   ensureNewProjectDialog,
   ensureOnboardingVisible,
+  focusApplicationShell,
   loadFreshApp,
 } from '../support/e2eStartup';
 
@@ -395,7 +396,7 @@ test.describe('QA Test Suite: Full Workflow', () => {
       });
       // Click to dismiss audio overlay
       await page.mouse.click(10, 10);
-      await page.getByRole('application', { name: 'ACE-Step DAW' }).focus();
+      await focusApplicationShell(page);
       await page.waitForTimeout(300);
     });
 

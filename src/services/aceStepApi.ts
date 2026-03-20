@@ -61,6 +61,7 @@ export function setBackendUrl(url: string): void {
   } else {
     localStorage.removeItem(BACKEND_URL_KEY);
   }
+  resetHealthCheckBackoff();
 }
 
 export async function healthCheck(): Promise<boolean> {

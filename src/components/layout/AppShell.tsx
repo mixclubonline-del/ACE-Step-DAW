@@ -187,7 +187,7 @@ export function AppShell() {
       <ProjectListDialog />
       <BounceInPlaceDialog />
       <KeyboardShortcutsDialog />
-      {!hasPriorityBlocker && <CommandPalette />}
+      {!hasPriorityBlocker && !hasBlockingDialog && <CommandPalette />}
       <ShortcutEditorDialog />
       <CoverModal />
       <RepaintModal />
@@ -196,7 +196,7 @@ export function AppShell() {
       <StemSeparationModal />
       <AudioToMidiModal />
       <ShareDialog />
-      {!hasPriorityBlocker && <AIAssistantPanel />}
+      {!hasPriorityBlocker && !hasBlockingDialog && <AIAssistantPanel />}
     </div>
   );
 }

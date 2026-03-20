@@ -10,6 +10,7 @@ import {
   createProjectViaDialog,
   ensureNewProjectDialog,
   ensureOnboardingVisible,
+  focusApplicationShell,
   loadFreshApp,
 } from '../support/e2eStartup';
 
@@ -253,7 +254,7 @@ test.describe('Real User Scenarios (Issue #110)', () => {
         (window as any).__uiStore?.getState().setKeyboardContext('timeline');
       });
       await page.mouse.click(16, 16);
-      await page.getByRole('application', { name: 'ACE-Step DAW' }).focus();
+      await focusApplicationShell(page);
       await page.waitForTimeout(200);
     });
 

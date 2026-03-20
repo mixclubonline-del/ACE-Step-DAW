@@ -14,6 +14,28 @@ export async function loadFreshApp(page: Page) {
   );
 }
 
+export async function loadReturningUserApp(page: Page) {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('ace-step-daw-ui', JSON.stringify({
+      state: {
+        onboardingCompleted: true,
+        onboardingSkipped: true,
+        showOnboarding: false,
+      },
+      version: 0,
+    }));
+  });
+  await page.goto('/');
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForFunction(
+    () => typeof (window as any).__store !== 'undefined',
+    null,
+    { timeout: 15000 },
+  );
+}
+
 export async function ensureOnboardingVisible(page: Page) {
   await expect(page.getByLabel('First-run onboarding')).toBeVisible({ timeout: 10000 });
 }
@@ -55,5 +77,12 @@ export async function createProjectViaDialog(
   );
   await expect(page.getByRole('heading', { name: 'New Project' })).toBeHidden({
     timeout: 5000,
+  });
+}
+
+export async function focusApplicationShell(page: Page) {
+  await page.evaluate(() => {
+    const app = document.querySelector('[aria-label="ACE-Step DAW"]') as HTMLElement | null;
+    app?.focus();
   });
 }

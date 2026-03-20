@@ -65,4 +65,22 @@ describe('healthCheck', () => {
     await expect(healthCheck()).resolves.toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it('resets the backoff immediately when the backend URL changes', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const { healthCheck, setBackendUrl } = await import('../aceStepApi');
+
+    await expect(healthCheck()).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    setBackendUrl('http://127.0.0.1:9000');
+
+    await expect(healthCheck()).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenLastCalledWith('http://127.0.0.1:9000/health');
+  });
 });
