@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useProjectStore } from '../../store/projectStore';
+import { useTransportStore } from '../../store/transportStore';
 import { useUIStore } from '../../store/uiStore';
 import { TimeRuler } from './TimeRuler';
 import { TrackLane } from './TrackLane';
@@ -67,6 +68,8 @@ export function Timeline() {
   const project = useProjectStore((s) => s.project);
   const addTrack = useProjectStore((s) => s.addTrack);
   const updateTrack = useProjectStore((s) => s.updateTrack);
+  const seek = useTransportStore((s) => s.seek);
+  const setTimelineFocused = useUIStore((s) => s.setTimelineFocused);
   const pixelsPerSecond = useUIStore((s) => s.pixelsPerSecond);
   const setPixelsPerSecond = useUIStore((s) => s.setPixelsPerSecond);
   const setKeyboardContext = useUIStore((s) => s.setKeyboardContext);
@@ -321,6 +324,10 @@ export function Timeline() {
 
         if (!hasDragged) {
           setDrag(null);
+          // Click without drag → seek playhead to click position
+          const time = (startViewX + scrollLeft) / pixelsPerSecond;
+          seek(time);
+          setTimelineFocused(true);
           return;
         }
 
@@ -351,7 +358,7 @@ export function Timeline() {
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
     },
-    [pixelsPerSecond, project, setContextWindow, setSelectWindow, deselectAllTracks],
+    [pixelsPerSecond, project, setContextWindow, setSelectWindow, deselectAllTracks, seek, setTimelineFocused],
   );
 
 
@@ -400,10 +407,11 @@ export function Timeline() {
         role="grid"
         tabIndex={0}
         data-onboarding-target="timeline"
-        className="flex-1 overflow-auto bg-[#242424] relative group"
+        className="flex-1 overflow-auto bg-[#1a1a2a] relative group"
         onWheel={handleWheel}
         onMouseDownCapture={handleMouseDownCapture}
-        onFocus={() => setKeyboardContext('timeline')}
+        onFocus={() => { setKeyboardContext('timeline'); setTimelineFocused(true); }}
+        onBlur={() => setTimelineFocused(false)}
         onMouseDown={() => setKeyboardContext('timeline')}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
