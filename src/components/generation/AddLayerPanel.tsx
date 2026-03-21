@@ -39,6 +39,14 @@ function getAudioTargetTracks(project: NonNullable<ReturnType<typeof useProjectS
   return project.tracks.filter((track) => !track.isGroup && (track.trackType === undefined || track.trackType === 'stems' || track.trackType === 'sample'));
 }
 
+function getSelectedProjectTrack(
+  project: NonNullable<ReturnType<typeof useProjectStore.getState>['project']>,
+  selectWindow: { startTime: number; endTime: number; trackIds: string[] } | null,
+) {
+  if (!selectWindow) return null;
+  return project.tracks.find((track) => selectWindow.trackIds.includes(track.id)) ?? null;
+}
+
 function getDefaultTargetTrackName(
   project: NonNullable<ReturnType<typeof useProjectStore.getState>['project']>,
   selectWindow: { startTime: number; endTime: number; trackIds: string[] } | null,
@@ -142,6 +150,10 @@ export function AddLayerPanel() {
   const audioTargetTracks = useMemo(() => (project ? getAudioTargetTracks(project) : []), [project]);
   const selectedTargetTrack = audioTargetTracks.find((track) => track.trackName === targetTrackName) ?? null;
   const selectedTargetTrackInfo = TRACK_CATALOG[targetTrackName];
+  const selectedWindowTrack = useMemo(
+    () => (project ? getSelectedProjectTrack(project, selectWindow) : null),
+    [project, selectWindow],
+  );
 
   const positionPanelNearBottomCenter = useCallback(() => {
     if (!panelRef.current) return;
@@ -377,7 +389,7 @@ export function AddLayerPanel() {
   const handleGenerate = async () => {
     stopPreview();
 
-    let targetTrack = project.tracks.find((track) => track.trackName === targetTrackName);
+    let targetTrack = selectedWindowTrack;
     if (!targetTrack) {
       targetTrack = addTrack(targetTrackName, 'stems');
     }
@@ -386,6 +398,8 @@ export function AddLayerPanel() {
       setTrackLocalCaption(targetTrack.id, style);
     }
 
+    useUIStore.getState().setSelectWindow(null);
+    setSavedSelectionBeforeWholeSong(null);
     handleClose();
 
     await generateFromAddLayer({
@@ -515,13 +529,13 @@ export function AddLayerPanel() {
           <div className="flex items-center gap-2 text-[11px] text-zinc-400 mt-2">
             <span
               className="h-2.5 w-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: selectedTargetTrackInfo.color }}
+              style={{ backgroundColor: selectedWindowTrack?.color ?? selectedTargetTrackInfo.color }}
               aria-hidden="true"
             />
             <span>
-              {selectedTargetTrack
-                ? `Generate into ${selectedTargetTrack.displayName}`
-                : `Create a new ${selectedTargetTrackInfo.displayName} track`}
+              {selectedWindowTrack
+                ? `Generate into selected row: ${selectedWindowTrack.displayName}`
+                : `Create a new ${selectedTargetTrackInfo.displayName} track in the selected row`}
             </span>
           </div>
         </div>

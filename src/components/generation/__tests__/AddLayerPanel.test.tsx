@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AddLayerPanel } from '../AddLayerPanel';
 import { useProjectStore } from '../../../store/projectStore';
 import { useUIStore } from '../../../store/uiStore';
 import { useGenerationStore } from '../../../store/generationStore';
+import { generateFromAddLayer } from '../../../services/generationPipeline';
 
 // Mock external dependencies
 vi.mock('../../../services/projectStorage', () => ({
@@ -69,6 +70,26 @@ describe('AddLayerPanel', () => {
     const bassButton = screen.getByRole('button', { name: 'Target track: Bass' });
     expect(bassButton.className).toContain('bg-white/10');
     expect(screen.getByText(`Generate into ${bassTrack!.displayName}`)).toBeInTheDocument();
+  });
+
+  it('creates a new preset track instead of falling back to the first existing track when the selection is on an empty row', async () => {
+    useUIStore.setState({
+      selectWindow: { startTime: 3, endTime: 7, trackIds: ['__empty-0'] },
+    });
+
+    const initialTrackCount = useProjectStore.getState().project!.tracks.length;
+    const existingDrumsTrackId = useProjectStore.getState().project!.tracks.find((track) => track.trackName === 'drums')!.id;
+
+    render(<AddLayerPanel />);
+    fireEvent.click(screen.getByText('Generate'));
+
+    await waitFor(() => {
+      expect(useProjectStore.getState().project!.tracks).toHaveLength(initialTrackCount + 1);
+    });
+
+    const latestCall = vi.mocked(generateFromAddLayer).mock.calls.at(-1);
+    expect(latestCall).toBeDefined();
+    expect(latestCall![0].trackId).not.toBe(existingDrumsTrackId);
   });
 
   it('displays the selection range from uiStore selectWindow', () => {
@@ -255,5 +276,19 @@ describe('AddLayerPanel', () => {
 
     expect(panel.style.left).toBe('270px');
     expect(panel.style.top).toBe('220px');
+  });
+
+  it('clears the select window after generation starts', async () => {
+    const bassTrack = useProjectStore.getState().project!.tracks.find((track) => track.trackName === 'bass');
+    useUIStore.setState({
+      selectWindow: { startTime: 3, endTime: 7, trackIds: [bassTrack!.id] },
+    });
+
+    render(<AddLayerPanel />);
+    fireEvent.click(screen.getByText('Generate'));
+
+    await waitFor(() => {
+      expect(useUIStore.getState().selectWindow).toBeNull();
+    });
   });
 });
