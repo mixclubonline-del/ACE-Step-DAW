@@ -23,22 +23,6 @@ describe('transportStore', () => {
       expect(state.currentTime).toBe(0);
     });
 
-    it('stores the last stop position and resumes from it', () => {
-      useTransportStore.getState().seek(12.5);
-      useTransportStore.getState().play();
-      useTransportStore.getState().stop();
-
-      let state = useTransportStore.getState();
-      expect(state.lastStopPosition).toBe(12.5);
-      expect(state.currentTime).toBe(0);
-
-      useTransportStore.getState().seek(2);
-      useTransportStore.getState().continuePlayback();
-
-      state = useTransportStore.getState();
-      expect(state.currentTime).toBe(12.5);
-      expect(state.isPlaying).toBe(true);
-    });
   });
 
   describe('seek bounds', () => {

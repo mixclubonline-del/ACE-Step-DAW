@@ -74,21 +74,23 @@ export function GridOverlay() {
   const totalWidth = project.totalDuration * pixelsPerSecond;
 
   const colors = {
-    bar: '#3a3a55',
-    beat: '#2e2e45',
+    bar: 'var(--color-daw-grid-bar)',
+    beat: 'var(--color-daw-grid-beat)',
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-none" style={{ width: totalWidth }}>
+    <div className="absolute inset-0 pointer-events-none" style={{ width: totalWidth, minHeight: '100vh' }}>
       {lines
         .filter((line) => line.strength !== 'sub')
         .map((line, i) => (
         <div
           key={i}
-          className="absolute top-0 bottom-0 w-px"
+          className="absolute top-0 bottom-0"
           style={{
             left: line.x,
-            backgroundColor: colors[line.strength as 'bar' | 'beat'],
+            width: line.strength === 'bar' ? 1 : 0,
+            backgroundColor: line.strength === 'bar' ? colors.bar : undefined,
+            borderLeft: line.strength === 'beat' ? `1px dashed ${colors.beat}` : undefined,
           }}
         />
       ))}

@@ -2,7 +2,6 @@ import { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { useTransportStore } from '../../store/transportStore';
 import { useUIStore } from '../../store/uiStore';
-import { useGenerationStore } from '../../store/generationStore';
 import { TimeRuler } from './TimeRuler';
 import { TrackLane } from './TrackLane';
 import { Playhead } from './Playhead';
@@ -16,7 +15,6 @@ import { InlineSuggestionBadge } from './InlineSuggestionBadge';
 import { useAudioImport } from '../../hooks/useAudioImport';
 import { Minimap } from './Minimap';
 import { TempoLane } from './TempoLane';
-import { TimeSignatureLane } from './TimeSignatureLane';
 import { ArrangementMarkers } from './ArrangementMarkers';
 import { TimelineEmptyState } from './TimelineEmptyState';
 import { SelectionFloatingToolbar } from './SelectionFloatingToolbar';
@@ -71,7 +69,6 @@ export function Timeline() {
   const addTrack = useProjectStore((s) => s.addTrack);
   const updateTrack = useProjectStore((s) => s.updateTrack);
   const seek = useTransportStore((s) => s.seek);
-  const isPlaying = useTransportStore((s) => s.isPlaying);
   const setTimelineFocused = useUIStore((s) => s.setTimelineFocused);
   const pixelsPerSecond = useUIStore((s) => s.pixelsPerSecond);
   const setPixelsPerSecond = useUIStore((s) => s.setPixelsPerSecond);
@@ -85,14 +82,12 @@ export function Timeline() {
   const keyboardContext = useUIStore((s) => s.keyboardContext);
   const timelineZoomRequest = useUIStore((s) => s.timelineZoomRequest);
   const setScrollX = useUIStore((s) => s.setScrollX);
-  const autoScrollEnabled = useUIStore((s) => s.autoScrollEnabled);
-  const userScrolledDuringPlayback = useUIStore((s) => s.userScrolledDuringPlayback);
-  const setUserScrolledDuringPlayback = useUIStore((s) => s.setUserScrolledDuringPlayback);
+  const setScrollY = useUIStore((s) => s.setScrollY);
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackAreaRef = useRef<HTMLDivElement>(null);
-  const programmaticScrollRef = useRef(false);
 
   const deselectAllTracks = useUIStore((s) => s.deselectAllTracks);
+  const selectTrack = useUIStore((s) => s.selectTrack);
   const setRegionRegenerateTarget = useUIStore((s) => s.setRegionRegenerateTarget);
   const regionRegenerateTarget = useUIStore((s) => s.regionRegenerateTarget);
   const inlineSuggestions = useUIStore((s) => s.inlineSuggestions);
@@ -105,16 +100,10 @@ export function Timeline() {
   const [fileDragOver, setFileDragOver] = useState(false);
   const dragCounterRef = useRef(0);
   const { importMultipleFiles, importLoopToTrack, importAssetToTrack, importAudioFileAsNewQuickSampler, importAssetAsQuickSampler } = useAudioImport();
-  const placeGenerationHistoryOnTrack = useGenerationStore((s) => s.placeGenerationHistoryOnTrack);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer.types;
-    if (
-      types.includes('Files')
-      || types.includes('application/x-loop-id')
-      || types.includes('application/x-asset-id')
-      || types.includes('application/x-generation-history-id')
-    ) {
+    if (types.includes('Files') || types.includes('application/x-loop-id') || types.includes('application/x-asset-id')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
     }
@@ -122,12 +111,7 @@ export function Timeline() {
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer.types;
-    if (
-      types.includes('Files')
-      || types.includes('application/x-loop-id')
-      || types.includes('application/x-asset-id')
-      || types.includes('application/x-generation-history-id')
-    ) {
+    if (types.includes('Files') || types.includes('application/x-loop-id') || types.includes('application/x-asset-id')) {
       e.preventDefault();
       dragCounterRef.current++;
       setFileDragOver(true);
@@ -146,13 +130,6 @@ export function Timeline() {
     e.preventDefault();
     dragCounterRef.current = 0;
     setFileDragOver(false);
-
-    const historyId = e.dataTransfer.getData('application/x-generation-history-id');
-    if (historyId) {
-      const newTrack = addTrack('custom', 'sample');
-      placeGenerationHistoryOnTrack(historyId, newTrack.id, 0);
-      return;
-    }
 
     // Handle preset loop drop -> create new sample track
     const loopId = e.dataTransfer.getData('application/x-loop-id');
@@ -180,7 +157,7 @@ export function Timeline() {
         }
       }
     }
-  }, [addTrack, placeGenerationHistoryOnTrack, importMultipleFiles, importLoopToTrack, importAssetToTrack, importAudioFileAsNewQuickSampler, importAssetAsQuickSampler]);
+  }, [addTrack, importMultipleFiles, importLoopToTrack, importAssetToTrack, importAudioFileAsNewQuickSampler, importAssetAsQuickSampler]);
 
   // Safety net: if a child (e.g. TrackLane) stops propagation on drop,
   // the Timeline's own handleDrop never fires. Listen globally to clear the overlay.
@@ -254,70 +231,6 @@ export function Timeline() {
     }
   }, [project, selectWindow, selectedClipIds, setPixelsPerSecond, setScrollX, timelineZoomRequest]);
 
-  // Reset userScrolledDuringPlayback when playback starts or stops
-  const prevIsPlayingRef = useRef(false);
-  useEffect(() => {
-    if (isPlaying && !prevIsPlayingRef.current) {
-      setUserScrolledDuringPlayback(false);
-    }
-    prevIsPlayingRef.current = isPlaying;
-  }, [isPlaying, setUserScrolledDuringPlayback]);
-
-  // Detect manual scroll during playback to temporarily disable auto-scroll
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-
-    const handleManualScroll = () => {
-      const transport = useTransportStore.getState();
-      const ui = useUIStore.getState();
-      if (transport.isPlaying && ui.autoScrollEnabled && !ui.userScrolledDuringPlayback) {
-        if (!programmaticScrollRef.current) {
-          setUserScrolledDuringPlayback(true);
-        }
-      }
-    };
-
-    container.addEventListener('scroll', handleManualScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleManualScroll);
-  }, [setUserScrolledDuringPlayback]);
-
-  // Auto-scroll to follow playhead during playback
-  useEffect(() => {
-    if (!isPlaying || !autoScrollEnabled || userScrolledDuringPlayback) return;
-
-    const container = scrollRef.current;
-    if (!container) return;
-
-    let rafId: number;
-    const tick = () => {
-      const currentTime = useTransportStore.getState().currentTime;
-      const pps = useUIStore.getState().pixelsPerSecond;
-      const playheadX = currentTime * pps;
-      const viewportWidth = container.clientWidth;
-      const scrollLeft = container.scrollLeft;
-
-      const leftMargin = viewportWidth * 0.2;
-      const rightMargin = viewportWidth * 0.8;
-      const playheadViewX = playheadX - scrollLeft;
-
-      if (playheadViewX > rightMargin || playheadViewX < leftMargin) {
-        const targetScroll = Math.max(0, playheadX - viewportWidth * 0.4);
-        programmaticScrollRef.current = true;
-        container.scrollTo({ left: targetScroll, behavior: 'smooth' });
-        requestAnimationFrame(() => {
-          programmaticScrollRef.current = false;
-        });
-        setScrollX(targetScroll);
-      }
-
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, autoScrollEnabled, userScrolledDuringPlayback, setScrollX]);
-
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -366,9 +279,6 @@ export function Timeline() {
       e.preventDefault();
       e.stopPropagation();
 
-      // Clear track selection when interacting with timeline
-      deselectAllTracks();
-
       const container = scrollRef.current;
       const trackArea = trackAreaRef.current;
       if (!container || !trackArea) return;
@@ -413,10 +323,17 @@ export function Timeline() {
 
         if (!hasDragged) {
           setDrag(null);
-          // Click without drag → seek playhead to click position
+          // Click without drag → seek playhead + select the clicked track row
           const time = (startViewX + scrollLeft) / pixelsPerSecond;
           seek(time);
           setTimelineFocused(true);
+          // Find and select the track row at the click Y position
+          const clickedIds = getIntersectedTrackIds(container, startViewY, startViewY + 1);
+          if (clickedIds.length > 0) {
+            selectTrack(clickedIds[0], ev.metaKey || ev.ctrlKey);
+          } else {
+            deselectAllTracks();
+          }
           return;
         }
 
@@ -447,7 +364,7 @@ export function Timeline() {
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
     },
-    [pixelsPerSecond, project, setContextWindow, setSelectWindow, deselectAllTracks, seek, setTimelineFocused],
+    [pixelsPerSecond, project, setContextWindow, setSelectWindow, deselectAllTracks, selectTrack, seek, setTimelineFocused],
   );
 
 
@@ -496,7 +413,11 @@ export function Timeline() {
         role="grid"
         tabIndex={0}
         data-onboarding-target="timeline"
-        className="flex-1 overflow-auto bg-[#1a1a2a] relative group"
+        className="flex-1 overflow-auto bg-[#1c1d22] relative group"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          setScrollY(el.scrollTop);
+        }}
         onWheel={handleWheel}
         onMouseDownCapture={handleMouseDownCapture}
         onFocus={() => { setKeyboardContext('timeline'); setTimelineFocused(true); }}
@@ -529,27 +450,16 @@ export function Timeline() {
             </div>
           </div>
         )}
-        <div
-          aria-label="Timeline navigation status"
-          role="status"
-          aria-live="polite"
-          className="absolute right-3 top-3 z-30 w-fit rounded border border-white/10 bg-black/40 px-2 py-1 text-[10px] text-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
-        >
-          Scope: <span className="text-white">Timeline</span> · Focus: <span className="text-white">{focusedTrackLabel}</span> · Clip: <span className="text-white">{selectedClipLabel}</span>
-        </div>
         <div className="relative" style={{ width: totalWidth, minWidth: '100%' }}>
           <TimeRuler />
           <ArrangementMarkers />
-          {showTempoLane && (
-            <>
-              <TempoLane />
-              <TimeSignatureLane />
-            </>
-          )}
+          {showTempoLane && <TempoLane />}
+
+          {/* Grid and playhead span full height (tracks + empty space below) */}
+          <GridOverlay />
+          <Playhead />
 
           <div ref={trackAreaRef} className="relative">
-            <GridOverlay />
-            <Playhead />
 
             {/* Committed context window overlay — Apple Teal (#5AC8FA) */}
             {ctxLeft !== null && ctxWidth !== null && ctxVRange && (
@@ -654,6 +564,9 @@ export function Timeline() {
               <TrackLane key={track.id} track={track} />
             ))}
 
+            {/* Empty placeholder rows — infinite grid like ACE Studio */}
+            <EmptyTrackRows />
+
             <TimelineEmptyState />
 
             {/* Inline AI suggestion badges */}
@@ -691,6 +604,39 @@ export function Timeline() {
           onClose={() => setCanvasCtxMenu(null)}
         />
       )}
+    </>
+  );
+}
+
+/** Empty placeholder rows below tracks — infinite grid like ACE Studio */
+const PLACEHOLDER_ROW_HEIGHT = 64; // matches default track height
+const PLACEHOLDER_ROW_COUNT = 20;  // enough to fill any viewport
+
+function EmptyTrackRows() {
+  const selectedTrackIds = useUIStore((s) => s.selectedTrackIds);
+  return (
+    <>
+      {Array.from({ length: PLACEHOLDER_ROW_COUNT }, (_, i) => {
+        const virtualId = `__empty-${i}`;
+        const isSelected = selectedTrackIds.has(virtualId);
+        return (
+          <div
+            key={virtualId}
+            data-track-id={virtualId}
+            data-timeline-lane
+            className="relative"
+            style={{
+              height: PLACEHOLDER_ROW_HEIGHT,
+              borderBottom: '1px solid var(--color-daw-arrangement-separator)',
+            }}
+            data-testid={`empty-row-${i}`}
+          >
+            {isSelected && (
+              <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundColor: 'rgba(94, 89, 255, 0.24)' }} />
+            )}
+          </div>
+        );
+      })}
     </>
   );
 }

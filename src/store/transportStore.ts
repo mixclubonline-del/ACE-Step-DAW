@@ -22,7 +22,8 @@ export interface TransportState {
   countInActive: boolean;
   countInBeat: number; // 0 = not counting in, negative = beats remaining
   currentTime: number;
-  lastStopPosition: number;
+  /** The time position where playback started — triangle anchor */
+  playStartTime: number;
   scrubAnchorTime: number | null;
   scrubResumeOnRelease: boolean;
   scrubPreviewRate: number;
@@ -44,8 +45,7 @@ export interface TransportState {
 
   play: () => void;
   pause: () => void;
-  stop: (time?: number) => void;
-  continuePlayback: () => void;
+  stop: () => void;
   setIsRecording: (v: boolean) => void;
   setCountIn: (active: boolean, beat?: number) => void;
   armTrack: (id: string) => void;
@@ -85,7 +85,7 @@ export const useTransportStore = create<TransportState>((set) => ({
   countInActive: false,
   countInBeat: 0,
   currentTime: 0,
-  lastStopPosition: 0,
+  playStartTime: 0,
   scrubAnchorTime: null,
   scrubResumeOnRelease: false,
   scrubPreviewRate: 0,
@@ -107,23 +107,16 @@ export const useTransportStore = create<TransportState>((set) => ({
 
   play: () => set({ isPlaying: true }),
   pause: () => set({ isPlaying: false }),
-  stop: (time) => set((s) => {
-    const stopTime = Math.max(0, time ?? s.currentTime);
-    return {
-      isPlaying: false,
-      isScrubbing: false,
-      currentTime: 0,
-      lastStopPosition: stopTime,
-      scrubAnchorTime: null,
-      scrubResumeOnRelease: false,
-      scrubPreviewRate: 0,
-      loopCycleCount: 0,
-    };
+  stop: () => set({
+    isPlaying: false,
+    isScrubbing: false,
+    currentTime: 0,
+    playStartTime: 0,
+    scrubAnchorTime: null,
+    scrubResumeOnRelease: false,
+    scrubPreviewRate: 0,
+    loopCycleCount: 0,
   }),
-  continuePlayback: () => set((s) => ({
-    isPlaying: true,
-    currentTime: s.lastStopPosition,
-  })),
   setIsRecording: (v) => set({ isRecording: v }),
   setCountIn: (active, beat = 0) => set({ countInActive: active, countInBeat: beat }),
   armTrack: (id) => set((s) => (
@@ -140,12 +133,13 @@ export const useTransportStore = create<TransportState>((set) => ({
     }
     return { armedTrackIds: exclusive ? [id] : [...s.armedTrackIds, id] };
   }),
-  seek: (time) => set({ currentTime: Math.max(0, time) }),
+  seek: (time) => set({ currentTime: Math.max(0, time), playStartTime: Math.max(0, time) }),
   setCurrentTime: (time) => set({ currentTime: time }),
   startScrub: (time, resumeOnRelease = false) => set({
     isPlaying: false,
     isScrubbing: true,
     currentTime: Math.max(0, time),
+    playStartTime: Math.max(0, time),
     scrubAnchorTime: Math.max(0, time),
     scrubResumeOnRelease: resumeOnRelease,
     scrubPreviewRate: 0,
@@ -153,6 +147,7 @@ export const useTransportStore = create<TransportState>((set) => ({
   updateScrub: (time, previewRate) => set((s) => ({
     isScrubbing: s.isScrubbing,
     currentTime: Math.max(0, time),
+    playStartTime: Math.max(0, time),
     scrubPreviewRate: Math.max(-4, Math.min(4, previewRate)),
   })),
   endScrub: () => set({
@@ -162,10 +157,7 @@ export const useTransportStore = create<TransportState>((set) => ({
     scrubPreviewRate: 0,
   }),
   toggleLoop: () => set((s) => ({ loopEnabled: !s.loopEnabled })),
-  setLoopRegion: (start, end) => set({
-    loopStart: Math.max(0, Math.min(start, end)),
-    loopEnd: Math.max(0, Math.max(start, end)),
-  }),
+  setLoopRegion: (start, end) => set({ loopStart: start, loopEnd: end }),
   toggleMetronome: () => set((s) => ({ metronomeEnabled: !s.metronomeEnabled })),
   setMetronomeSound: (sound) => set({ metronomeSound: sound }),
   setMetronomeVolume: (volume) => set({ metronomeVolume: Math.max(0, Math.min(1, volume)) }),

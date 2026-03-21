@@ -278,7 +278,7 @@ export function useTransport() {
 
     engine.updateSoloState();
 
-    const startFrom = fromTime ?? useTransportStore.getState().currentTime;
+    const startFrom = fromTime ?? useTransportStore.getState().playStartTime;
 
     // Loop end = last clip's endpoint (or full timeline if no clips)
     const { loopEnabled } = useTransportStore.getState();
@@ -526,7 +526,8 @@ export function useTransport() {
     samplerEngine.stopAll();
     automationEngine.stop();
     useTransportStore.getState().pause();
-    useTransportStore.getState().seek(time);
+    // Only update currentTime, not playStartTime — the anchor stays put
+    useTransportStore.getState().setCurrentTime(time);
   }, [finalizeSessionArrangementRecording, isRecording, stopRecording]);
 
   const stop = useCallback(async () => {
@@ -540,14 +541,8 @@ export function useTransport() {
     synthEngine.releaseAll();
     samplerEngine.stopAll();
     automationEngine.stop();
-    useTransportStore.getState().stop(time);
+    useTransportStore.getState().stop();
   }, [finalizeSessionArrangementRecording, isRecording, stopRecording]);
-
-  const continuePlayback = useCallback(async () => {
-    const resumeFrom = useTransportStore.getState().lastStopPosition;
-    useTransportStore.getState().continuePlayback();
-    await play(resumeFrom);
-  }, [play]);
 
   const seek = useCallback((time: number) => {
     const engine = getAudioEngine();
@@ -711,7 +706,6 @@ export function useTransport() {
     isPlaying,
     currentTime,
     play,
-    continuePlayback,
     pause,
     stop,
     seek,
