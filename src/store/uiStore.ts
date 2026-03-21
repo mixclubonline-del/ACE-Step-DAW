@@ -24,6 +24,9 @@ import {
   type CommandPaletteSearchResult,
 } from '../services/commandPalette';
 import type { HistoryTarget } from './projectStore';
+import {
+  DEFAULT_TIMELINE_PIXELS_PER_SECOND,
+} from '../utils/timelineZoom';
 
 function createAssistantMessage(role: AIChatMessage['role'], content: string): AIChatMessage {
   return {
@@ -50,6 +53,7 @@ export interface UIState {
   keyboardContext: { scope: ShortcutContext; trackId: string | null };
   arrangementView: 'arrangement' | 'session';
   pixelsPerSecond: number;
+  timelineViewportWidth: number;
   snapEnabled: boolean;
   scrollX: number;
   scrollY: number;
@@ -98,7 +102,7 @@ export interface UIState {
     targetRowIndex?: number;
   } | null;
   /** Latest timeline viewport request consumed by the arrangement surface. */
-  timelineZoomRequest: { id: number; mode: 'selection' | 'project' } | null;
+  timelineZoomRequest: { id: number; mode: 'selection' | 'project' | 'stepIn' | 'stepOut' | 'reset' } | null;
   /** Track whose inspector panel is currently expanded. */
   expandedTrackId: string | null;
   /** Track whose sequencer editor is currently open (bottom panel). */
@@ -196,12 +200,14 @@ export interface UIState {
   setMainView: (view: 'arrangement' | 'session') => void;
   toggleMainView: () => void;
   setPixelsPerSecond: (pps: number) => void;
+  setTimelineViewportWidth: (width: number) => void;
   setKeyboardContext: (scope: ShortcutContext, trackId?: string | null) => void;
   toggleArrangementView: () => void;
   setArrangementView: (view: 'arrangement' | 'session') => void;
   toggleSnap: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  zoomReset: () => void;
   setScrollX: (x: number) => void;
   setScrollY: (y: number) => void;
   selectClip: (clipId: string, multi?: boolean) => void;
@@ -356,7 +362,6 @@ export interface UIState {
   applyWorkspaceComplexity: (tier: 'simple' | 'standard' | 'advanced') => void;
 }
 
-const ZOOM_LEVELS = [10, 25, 50, 100, 200, 500];
 const MIN_VIRTUAL_KEYBOARD_OCTAVE = 1;
 const MAX_VIRTUAL_KEYBOARD_OCTAVE = 7;
 const MIN_VIRTUAL_KEYBOARD_VELOCITY = 16;
@@ -421,7 +426,8 @@ export const useUIStore = create<UIState>()(
   mainView: 'arrangement',
   keyboardContext: { scope: 'timeline', trackId: null },
   arrangementView: 'arrangement',
-  pixelsPerSecond: 50,
+  pixelsPerSecond: DEFAULT_TIMELINE_PIXELS_PER_SECOND,
+  timelineViewportWidth: 0,
   snapEnabled: true,
   scrollX: 0,
   scrollY: 0,
@@ -534,6 +540,7 @@ export const useUIStore = create<UIState>()(
     return { mainView: nextView, arrangementView: nextView };
   }),
   setPixelsPerSecond: (pps) => set({ pixelsPerSecond: pps }),
+  setTimelineViewportWidth: (timelineViewportWidth) => set({ timelineViewportWidth }),
   setKeyboardContext: (scope, trackId = null) => set((state) => ({
     keyboardContext: {
       scope,
@@ -548,18 +555,28 @@ export const useUIStore = create<UIState>()(
   toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
 
   zoomIn: () =>
-    set((s) => {
-      const idx = ZOOM_LEVELS.findIndex((z) => z >= s.pixelsPerSecond);
-      const next = idx < ZOOM_LEVELS.length - 1 ? ZOOM_LEVELS[idx + 1] : s.pixelsPerSecond;
-      return { pixelsPerSecond: next };
-    }),
+    set((state) => ({
+      timelineZoomRequest: {
+        id: (state.timelineZoomRequest?.id ?? 0) + 1,
+        mode: 'stepIn',
+      },
+    })),
 
   zoomOut: () =>
-    set((s) => {
-      const idx = ZOOM_LEVELS.findIndex((z) => z >= s.pixelsPerSecond);
-      const prev = idx > 0 ? ZOOM_LEVELS[idx - 1] : s.pixelsPerSecond;
-      return { pixelsPerSecond: prev };
-    }),
+    set((state) => ({
+      timelineZoomRequest: {
+        id: (state.timelineZoomRequest?.id ?? 0) + 1,
+        mode: 'stepOut',
+      },
+    })),
+
+  zoomReset: () =>
+    set((state) => ({
+      timelineZoomRequest: {
+        id: (state.timelineZoomRequest?.id ?? 0) + 1,
+        mode: 'reset',
+      },
+    })),
 
   setScrollX: (x) => set({ scrollX: x }),
   setScrollY: (y) => set({ scrollY: y }),
