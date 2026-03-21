@@ -133,7 +133,7 @@ log "Launching Codex sprint runner with native sub-agents"
 
 codex exec \
   -C "$DAW" \
-  --full-auto \
+  --dangerously-bypass-approvals-and-sandbox \
   -m gpt-5.4 \
   -o "$OUTPUT_FILE" \
   "$SPRINT_PROMPT" 2>&1 | tee -a "$LOG"
