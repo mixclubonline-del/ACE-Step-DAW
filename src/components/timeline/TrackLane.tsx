@@ -93,7 +93,7 @@ export function TrackLane({ track }: TrackLaneProps) {
   } = useAudioImport();
   const [fileDragOver, setFileDragOver] = useState(false);
 
-  const resizeRef = useRef<{ startY: number; startH: number } | null>(null);
+  const resizeRef = useRef<{ startY: number; startRowHeight: number; startLaneHeight: number } | null>(null);
   const laneHeight = track.laneHeight ?? 64;
   const rowHeight = getArrangementRowHeight(track);
 
@@ -103,14 +103,18 @@ export function TrackLane({ track }: TrackLaneProps) {
     const minRenderedRowHeight = getArrangementRowHeight({ ...track, laneHeight: MIN_LANE_HEIGHT });
     const maxRenderedRowHeight = getArrangementRowHeight({ ...track, laneHeight: MAX_LANE_HEIGHT });
 
-    resizeRef.current = { startY: e.clientY, startH: rowHeight };
+    resizeRef.current = {
+      startY: e.clientY,
+      startRowHeight: rowHeight,
+      startLaneHeight: laneHeight,
+    };
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!resizeRef.current) return;
       const delta = ev.clientY - resizeRef.current.startY;
       const nextRenderedRowHeight = Math.min(
         maxRenderedRowHeight,
-        Math.max(minRenderedRowHeight, resizeRef.current.startH + delta),
+        Math.max(minRenderedRowHeight, resizeRef.current.startRowHeight + delta),
       );
       const nextLaneHeight = Math.min(
         MAX_LANE_HEIGHT,
@@ -124,7 +128,7 @@ export function TrackLane({ track }: TrackLaneProps) {
     const onKeyDown = (ev: KeyboardEvent) => {
       if (ev.key !== 'Escape') return;
       if (resizeRef.current) {
-        updateTrack(track.id, { laneHeight: resizeRef.current.startH });
+        updateTrack(track.id, { laneHeight: resizeRef.current.startLaneHeight });
       }
       resizeRef.current = null;
       window.removeEventListener('mousemove', onMouseMove);
