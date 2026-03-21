@@ -9,6 +9,11 @@ import {
   TIME_SIGNATURE_LANE_HEIGHT,
   TIMELINE_RULER_HEIGHT,
 } from '../timeline/timelineLayout';
+import {
+  buildArrangementTrackSlots,
+  DEFAULT_ARRANGEMENT_PLACEHOLDER_ROW_COUNT,
+  getArrangementEmptyTrackId,
+} from '../arrangement/trackSlotLayout';
 
 export function TrackList() {
   const project = useProjectStore((s) => s.project);
@@ -22,7 +27,6 @@ export function TrackList() {
   const trackListScrollRef = useRef<HTMLDivElement>(null);
   const isCollapsed = trackListDisplayMode === 'collapsed';
 
-  // Sync vertical scroll with timeline
   useEffect(() => {
     if (trackListScrollRef.current) {
       trackListScrollRef.current.scrollTop = scrollY;
@@ -59,11 +63,6 @@ export function TrackList() {
     draggedIdRef.current = null;
   }, [reorderTrack, dragOverPosition]);
 
-  const handleDragEnd = useCallback(() => {
-    draggedIdRef.current = null;
-    setDragOverId(null);
-  }, []);
-
   const resizeDragRef = useRef<{ startX: number; startW: number } | null>(null);
 
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
@@ -85,8 +84,8 @@ export function TrackList() {
 
   if (!project) return null;
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const visibleTracks = useMemo(() => getVisibleTracks(), [getVisibleTracks, project]);
+  const rows = useMemo(() => buildArrangementTrackSlots(visibleTracks, PLACEHOLDER_ROW_COUNT), [visibleTracks]);
   const showsArrangementMarkers = (project.markers?.length ?? 0) > 0;
 
   return (
@@ -100,7 +99,6 @@ export function TrackList() {
         }
       }}
     >
-      {/* Header spacer aligned with TimeRuler */}
       <div
         className={`shrink-0 border-b border-[#3a3a3a] bg-[#333] flex items-center ${isCollapsed ? 'px-1.5 justify-center' : 'px-2 justify-between'}`}
         style={{ height: TIMELINE_RULER_HEIGHT }}
@@ -126,25 +124,27 @@ export function TrackList() {
       )}
 
       <div ref={trackListScrollRef} className="flex-1 overflow-y-hidden overflow-x-hidden">
-        {visibleTracks.map((track) => (
+        {rows.map((row) => (row.kind === 'track' ? (
           <TrackHeader
-            key={track.id}
-            track={track}
+            key={row.track.id}
+            track={row.track}
             isCollapsed={isCollapsed}
-            isChild={!!track.parentTrackId}
+            isChild={!!row.track.parentTrackId}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
-            isDragOver={dragOverId === track.id}
-            dragOverPosition={dragOverId === track.id ? dragOverPosition : null}
+            isDragOver={dragOverId === row.track.id}
+            dragOverPosition={dragOverId === row.track.id ? dragOverPosition : null}
           />
-        ))}
-
-        {/* Empty placeholder rows matching timeline — click to add track */}
-        <EmptyTrackHeaderRows isCollapsed={isCollapsed} />
+        ) : (
+          <EmptyTrackHeaderRow
+            key={getArrangementEmptyTrackId(row.slotIndex)}
+            slotIndex={row.slotIndex}
+            isCollapsed={isCollapsed}
+          />
+        )))}
       </div>
 
-      {/* Right-edge resize handle */}
       {!isCollapsed && (
         <div
           className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize bg-transparent hover:bg-daw-accent/30 transition-colors z-10"
@@ -156,34 +156,28 @@ export function TrackList() {
 }
 
 const PLACEHOLDER_ROW_HEIGHT = 64;
-const PLACEHOLDER_ROW_COUNT = 20;
+const PLACEHOLDER_ROW_COUNT = DEFAULT_ARRANGEMENT_PLACEHOLDER_ROW_COUNT;
 
-function EmptyTrackHeaderRows({ isCollapsed }: { isCollapsed: boolean }) {
+function EmptyTrackHeaderRow({ slotIndex, isCollapsed }: { slotIndex: number; isCollapsed: boolean }) {
   const setShowInstrumentPicker = useUIStore((s) => s.setShowInstrumentPicker);
   const selectedTrackIds = useUIStore((s) => s.selectedTrackIds);
+  const virtualId = getArrangementEmptyTrackId(slotIndex);
+  const isSelected = selectedTrackIds.has(virtualId);
+
   return (
-    <>
-      {Array.from({ length: PLACEHOLDER_ROW_COUNT }, (_, i) => {
-        const virtualId = `__empty-${i}`;
-        const isSelected = selectedTrackIds.has(virtualId);
-        return (
-          <div
-            key={`empty-header-${i}`}
-            className="relative flex items-center justify-center border-b cursor-pointer group"
-            style={{
-              height: PLACEHOLDER_ROW_HEIGHT,
-              borderColor: 'var(--color-daw-arrangement-separator)',
-            }}
-            onClick={() => setShowInstrumentPicker(true)}
-            data-testid={`empty-header-row-${i}`}
-          >
-            {isSelected && (
-              <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundColor: 'rgba(94, 89, 255, 0.24)' }} />
-            )}
-            <span className={`text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity ${isCollapsed ? 'text-sm' : 'text-lg'}`}>+</span>
-          </div>
-        );
-      })}
-    </>
+    <div
+      className="relative flex items-center justify-center border-b cursor-pointer group"
+      style={{
+        height: PLACEHOLDER_ROW_HEIGHT,
+        borderColor: 'var(--color-daw-arrangement-separator)',
+      }}
+      onClick={() => setShowInstrumentPicker(true)}
+      data-testid={`empty-header-row-${slotIndex}`}
+    >
+      {isSelected && (
+        <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundColor: 'rgba(94, 89, 255, 0.24)' }} />
+      )}
+      <span className={`text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity ${isCollapsed ? 'text-sm' : 'text-lg'}`}>+</span>
+    </div>
   );
 }
