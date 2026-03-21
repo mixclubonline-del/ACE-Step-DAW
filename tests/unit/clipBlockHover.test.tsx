@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ClipBlock } from '../../src/components/timeline/ClipBlock';
 import { useProjectStore } from '../../src/store/projectStore';
@@ -113,6 +113,59 @@ describe('ClipBlock hover and active feedback', () => {
 
     expect(leftLine).toBeInTheDocument();
     expect(rightLine).toBeInTheDocument();
+  });
+
+  it('forces a resize cursor and visible edge feedback on hover', () => {
+    const clip = makeClip();
+    const track = makeTrack();
+
+    render(<ClipBlock clip={clip} track={track} />);
+
+    const leftHandle = screen.getByTestId('resize-handle-left');
+    const clipEl = screen.getByTestId(`clip-${clip.id}`) as HTMLElement;
+    const leftIndicator = screen.getByTestId('resize-indicator-left') as HTMLElement;
+    const leftHoverZone = screen.getByTestId('resize-hover-zone-left') as HTMLElement;
+
+    fireEvent.mouseEnter(leftHandle);
+
+    expect(leftHandle.style.cursor).toBe('col-resize');
+    expect(clipEl.style.cursor).toBe('col-resize');
+    expect(document.body.style.cursor).toBe('col-resize');
+    expect(document.documentElement.style.cursor).toBe('col-resize');
+    expect(leftIndicator.style.backgroundColor).toContain('255, 255, 255');
+    expect(leftHoverZone.style.background).toContain('linear-gradient');
+
+    fireEvent.mouseLeave(leftHandle);
+
+    expect(clipEl.style.cursor).toBe('');
+    expect(document.body.style.cursor).toBe('');
+    expect(document.documentElement.style.cursor).toBe('');
+  });
+
+  it('switches to resize cursor immediately when entering the clip at the edge', () => {
+    const clip = makeClip();
+    const track = makeTrack();
+
+    render(<ClipBlock clip={clip} track={track} />);
+
+    const clipEl = screen.getByTestId(`clip-${clip.id}`) as HTMLElement;
+    vi.spyOn(clipEl, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 20,
+      width: 160,
+      height: 40,
+      top: 20,
+      right: 260,
+      bottom: 60,
+      left: 100,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.mouseEnter(clipEl, { clientX: 103, clientY: 24 });
+
+    expect(clipEl.style.cursor).toBe('col-resize');
+    expect(document.body.style.cursor).toBe('col-resize');
+    expect(document.documentElement.style.cursor).toBe('col-resize');
   });
 
   it('does not interfere with selection ring when clip is selected', () => {
