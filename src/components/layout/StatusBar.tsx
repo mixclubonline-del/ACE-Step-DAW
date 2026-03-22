@@ -54,6 +54,7 @@ export function StatusBar() {
 
   const jobCount = activeJobs.length;
   const jobLabel = jobCount === 1 ? '1 job' : `${jobCount} jobs`;
+  const hasActiveJobs = activeJobs.length > 0;
   const zoomIndex = TIMELINE_ZOOM_LEVELS.reduce((nearestIndex, level, index) => {
     const nearestDistance = Math.abs(TIMELINE_ZOOM_LEVELS[nearestIndex] - pixelsPerSecond);
     const currentDistance = Math.abs(level - pixelsPerSecond);
@@ -62,27 +63,31 @@ export function StatusBar() {
 
   return (
     <>
-      <div className="border-t border-[#1a1a1a] bg-gradient-to-b from-[#2a2a2a] to-[#232323] text-[10px] text-zinc-400">
-        <div className="flex h-6 items-center gap-3 px-3">
-          <div
-            className="flex items-center"
-            title={connected ? 'Backend connected' : 'Backend offline'}
-          >
-            <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'}`} />
-          </div>
-          {activeJobs.length > 0 && (
+      <div className="border-t border-[#1a1a1a] bg-gradient-to-b from-[#2a2a2a] to-[#232323] text-[10px] text-zinc-400" data-testid="status-bar">
+        {hasActiveJobs && (
+          <div className="flex h-6 items-center gap-3 px-3" data-testid="status-bar-job-row">
             <span className="text-daw-accent truncate">
               Generating: {primaryJob?.trackName ?? 'unknown'}
               {primaryJob?.stage ? ` \u2022 ${primaryJob.stage}` : ''}
               {primaryJob?.progressPercent != null ? ` ${Math.round(primaryJob.progressPercent)}%` : ''}
               {' '}({jobLabel})
             </span>
-          )}
-          <span className="flex-1" />
-        </div>
+            <span className="flex-1" />
+          </div>
+        )}
 
-        <div className="flex h-6 items-center gap-3 border-t border-white/4 px-3">
-          {model && <span className="truncate text-zinc-400">{model}</span>}
+        <div
+          className={`flex h-6 items-center gap-3 px-3 ${hasActiveJobs ? 'border-t border-white/4' : ''}`}
+          data-testid="status-bar-meta-row"
+        >
+          <div
+            className="flex items-center"
+            title={connected ? 'Backend connected' : 'Backend offline'}
+            data-testid="status-connection-indicator"
+          >
+            <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'}`} />
+          </div>
+          {model && <span className="truncate text-zinc-400" data-testid="status-model-name">{model}</span>}
           <span className="flex-1" />
           <div className="flex items-center gap-1.5 text-zinc-500">
             <button

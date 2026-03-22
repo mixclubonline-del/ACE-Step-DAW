@@ -35,4 +35,34 @@ describe('StatusBar controls', () => {
 
     expect(useUIStore.getState().pixelsPerSecond).toBe(TIMELINE_ZOOM_LEVELS[12]);
   });
+
+  it('collapses to a single meta row when there are no active generation jobs', () => {
+    render(<StatusBar />);
+
+    expect(screen.queryByTestId('status-bar-job-row')).not.toBeInTheDocument();
+    expect(screen.getByTestId('status-bar-meta-row')).toBeInTheDocument();
+    expect(screen.getByTestId('status-connection-indicator')).toBeInTheDocument();
+  });
+
+  it('shows a separate job row only when generation is active', () => {
+    useGenerationStore.setState({
+      jobs: [
+        {
+          id: 'job-1',
+          clipId: 'clip-1',
+          trackName: 'Drums',
+          status: 'generating',
+          progress: 'Generating',
+          stage: 'Diffusion',
+          progressPercent: 42,
+          lastUpdatedAt: Date.now(),
+        },
+      ],
+    });
+
+    render(<StatusBar />);
+
+    expect(screen.getByTestId('status-bar-job-row')).toHaveTextContent('Generating: Drums');
+    expect(screen.getByTestId('status-bar-meta-row')).toBeInTheDocument();
+  });
 });
