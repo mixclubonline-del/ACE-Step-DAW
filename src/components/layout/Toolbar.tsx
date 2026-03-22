@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { useUIStore } from '../../store/uiStore';
 import { useTransportStore } from '../../store/transportStore';
@@ -171,104 +171,35 @@ function FileMenu({ disabled }: { disabled: boolean }) {
   );
 }
 
-function GenerateMenu({ disabled }: { disabled: boolean }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+function GenerateButton({ disabled }: { disabled: boolean }) {
   const showGenerationPanel = useUIStore((s) => s.showGenerationPanel);
-  const showGenerationHistoryPanel = useUIStore((s) => s.showGenerationHistoryPanel);
-  const toggleGenerationPanel = useUIStore((s) => s.toggleGenerationPanel);
-  const toggleGenerationHistoryPanel = useUIStore((s) => s.toggleGenerationHistoryPanel);
-  const setBatchGenerateMode = useUIStore((s) => s.setBatchGenerateMode);
-
-  const isActive = showGenerationPanel || showGenerationHistoryPanel;
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  const handleMainClick = useCallback(() => {
-    toggleGenerationPanel();
-  }, [toggleGenerationPanel]);
-
-  const handleDropdownClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setOpen((prev) => !prev);
-  }, []);
+  const setShowGenerationPanel = useUIStore((s) => s.setShowGenerationPanel);
+  const openGenerationPanelView = useUIStore((s) => s.openGenerationPanelView);
 
   return (
-    <div className="relative" ref={menuRef}>
-      <div className="flex items-center" data-testid="generate-menu">
-        <button
-          onClick={handleMainClick}
-          disabled={disabled}
-          data-onboarding-target="genr-button"
-          data-testid="generate-button"
-          aria-label="Generate"
-          aria-pressed={showGenerationPanel}
-          className={`rounded-l-md px-2.5 py-1 text-[11px] font-semibold tracking-[0.12em] uppercase transition-colors ${
-            isActive
-              ? 'border border-r-0 border-indigo-400/50 bg-indigo-500/20 text-indigo-100'
-              : 'border border-r-0 border-cyan-400/30 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20'
-          } disabled:opacity-30`}
-          title="AI Generation Panel (G)"
-        >
-          Generate
-        </button>
-        <button
-          onClick={handleDropdownClick}
-          disabled={disabled}
-          data-testid="generate-dropdown-trigger"
-          aria-label="Generation options"
-          aria-haspopup="true"
-          aria-expanded={open}
-          className={`rounded-r-md px-1 py-1 text-[11px] transition-colors ${
-            isActive
-              ? 'border border-l-0 border-indigo-400/50 bg-indigo-500/20 text-indigo-100'
-              : 'border border-l-0 border-cyan-400/30 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20'
-          } disabled:opacity-30`}
-          title="More generation options"
-        >
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="opacity-70">
-            <path d="M1 2.5L4 5.5L7 2.5" />
-          </svg>
-        </button>
-      </div>
-      {open && (
-        <div
-          className="absolute top-full left-0 mt-1 w-52 bg-[#2a2a2a] border border-[#444] rounded-lg shadow-xl z-50 py-1"
-          data-testid="generate-dropdown"
-        >
-          <button
-            onClick={() => { setBatchGenerateMode('silence'); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white hover:bg-daw-surface-2 transition-colors flex items-center justify-between"
-          >
-            <span>Quick Generate</span>
-            <span className="text-[10px] text-zinc-500">Cmd+G</span>
-          </button>
-          <button
-            onClick={() => { toggleGenerationPanel(); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white hover:bg-daw-surface-2 transition-colors flex items-center justify-between"
-          >
-            <span>Generation Panel</span>
-            <span className="text-[10px] text-zinc-500">G</span>
-          </button>
-          <button
-            onClick={() => { toggleGenerationHistoryPanel(); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white hover:bg-daw-surface-2 transition-colors flex items-center justify-between"
-          >
-            <span>History</span>
-            <span className="text-[10px] text-zinc-500">H</span>
-          </button>
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={() => {
+        if (showGenerationPanel) {
+          setShowGenerationPanel(false);
+          return;
+        }
+        openGenerationPanelView('textToMusic');
+      }}
+      disabled={disabled}
+      data-onboarding-target="genr-button"
+      data-testid="generate-button"
+      aria-label="Generate"
+      aria-pressed={showGenerationPanel}
+      className={`rounded-md border px-3 py-1 text-[11px] font-semibold tracking-[0.12em] uppercase transition-colors ${
+        showGenerationPanel
+          ? 'border-indigo-400/50 bg-indigo-500/20 text-indigo-100'
+          : 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20'
+      } disabled:opacity-30`}
+      title="Generate panel"
+    >
+      Generate
+    </button>
   );
 }
 
@@ -379,7 +310,7 @@ export function Toolbar() {
 
       {/* Generation actions */}
       <div className="flex items-center gap-0.5 bg-[#2a2a2a]/60 rounded-lg px-1.5 py-0.5" data-testid="toolbar-group">
-        <GenerateMenu disabled={!project} />
+        <GenerateButton disabled={!project} />
       </div>
 
       <ToolbarSeparator />

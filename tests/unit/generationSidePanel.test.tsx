@@ -251,4 +251,17 @@ describe('GenerationSidePanel', () => {
 
     expect(screen.getByRole('listbox', { name: 'Prompt autocomplete suggestions' })).toBeInTheDocument();
   });
+
+  it('switches between text-to-music, multi-track, and history inside the same side panel', () => {
+    render(<GenerationSidePanel />);
+
+    fireEvent.click(screen.getByTestId('generation-panel-tab-multi-track'));
+    expect(screen.getByTestId('multi-track-generation-section')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('generation-panel-tab-history'));
+    expect(screen.getByTestId('generation-history-section')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('generation-panel-tab-text-to-music'));
+    expect(screen.getByRole('combobox', { name: 'Generation target track' })).toBeInTheDocument();
+  });
 });
