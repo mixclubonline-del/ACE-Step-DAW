@@ -148,34 +148,26 @@ describe('Toolbar visual hierarchy and grouping (#544)', () => {
     expect(screen.getByTitle('Mixer (X)')).toBeInTheDocument();
     expect(screen.getByTitle('Loop Browser (O)')).toBeInTheDocument();
     expect(screen.getByTitle('AI Assistant (Cmd+/)')).toBeInTheDocument();
-    expect(screen.getByTitle('Zoom Out')).toBeInTheDocument();
-    expect(screen.getByTitle('Zoom In')).toBeInTheDocument();
-    // Settings and Keyboard Shortcuts are now inside the overflow menu
-    expect(screen.getByTitle('More actions')).toBeInTheDocument();
+    expect(screen.getByTitle('Visit ACE Studio')).toBeInTheDocument();
   });
 
-  it('shows Settings and Keyboard Shortcuts inside the overflow menu', () => {
+  it('keeps settings and shortcuts out of the top toolbar', () => {
     render(<Toolbar />);
-    // Settings and Shortcuts should NOT be visible by default
+
     expect(screen.queryByText('Settings')).not.toBeInTheDocument();
     expect(screen.queryByText('Keyboard Shortcuts')).not.toBeInTheDocument();
-
-    // Open the overflow menu
-    const overflowTrigger = screen.getByTestId('overflow-menu-trigger');
-    fireEvent.click(overflowTrigger);
-
-    // They should now be visible inside the dropdown
-    expect(screen.getByText('Settings')).toBeInTheDocument();
-    expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument();
+    expect(screen.queryByTestId('overflow-menu-trigger')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Zoom Out')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Zoom In')).not.toBeInTheDocument();
   });
 
-  it('anchors the overflow menu below the toolbar button', () => {
+  it('shows an ACE Studio external link on the right side', () => {
     render(<Toolbar />);
 
-    fireEvent.click(screen.getByTestId('overflow-menu-trigger'));
-
-    expect(screen.getByTestId('overflow-menu-dropdown')).toHaveClass('top-full', 'mt-1');
-    expect(screen.getByTestId('overflow-menu-dropdown')).not.toHaveClass('bottom-full');
+    const link = screen.getByTestId('toolbar-acestudio-link');
+    expect(link).toHaveAttribute('href', 'https://acestudio.ai/');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveTextContent('ACE Studio');
   });
 
   it('shows the loaded model badge and opens the library panel when clicked', () => {

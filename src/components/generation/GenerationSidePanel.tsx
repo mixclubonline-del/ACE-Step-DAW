@@ -17,6 +17,7 @@ import { PromptAutocompleteTextarea } from './PromptAutocompleteTextarea';
 import { computeEta, formatEtaDisplay } from '../../utils/generationProgress';
 import { MultiTrackGenerateSection } from './MultiTrackGenerateSection';
 import { GenerationHistorySection } from './GenerationHistorySection';
+import { GenerationSettingsSection } from './GenerationSettingsSection';
 
 const VARIATION_STATUS_LABELS: Record<VariationStatus, string> = {
   pending: 'Waiting',
@@ -189,6 +190,11 @@ export function GenerationSidePanel() {
           title: 'Generate',
           description: 'Browse, preview, and reuse earlier AI generations from one place.',
         };
+      case 'settings':
+        return {
+          title: 'Generate',
+          description: 'Tune models, backend, and project defaults without leaving the generation workflow.',
+        };
       default:
         return {
           title: 'Generate',
@@ -229,7 +235,7 @@ export function GenerationSidePanel() {
       </div>
 
       <div className="border-b border-[#333] px-3 py-2">
-        <div className="grid grid-cols-3 gap-1 rounded-lg border border-[#3a3a3a] bg-[#202020] p-1" data-testid="generation-panel-tabs">
+        <div className="grid grid-cols-4 gap-1 rounded-lg border border-[#3a3a3a] bg-[#202020] p-1" data-testid="generation-panel-tabs">
           <button
             type="button"
             onClick={() => setGenerationPanelView('textToMusic')}
@@ -269,6 +275,19 @@ export function GenerationSidePanel() {
           >
             History
           </button>
+          <button
+            type="button"
+            onClick={() => setGenerationPanelView('settings')}
+            className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
+              generationPanelView === 'settings'
+                ? 'bg-indigo-600 text-white'
+                : 'text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200'
+            }`}
+            data-testid="generation-panel-tab-settings"
+            aria-pressed={generationPanelView === 'settings'}
+          >
+            Settings
+          </button>
         </div>
       </div>
 
@@ -279,6 +298,8 @@ export function GenerationSidePanel() {
         />
       ) : generationPanelView === 'history' ? (
         <GenerationHistorySection />
+      ) : generationPanelView === 'settings' ? (
+        <GenerationSettingsSection active={generationPanelView === 'settings'} />
       ) : (
         <div className="flex-1 space-y-4 overflow-y-auto px-3 py-3">
           {statusMessage && (

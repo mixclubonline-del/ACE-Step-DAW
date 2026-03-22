@@ -95,62 +95,21 @@ function ToolbarSeparator() {
   return <div className="w-px h-5 bg-[#444]/50" data-testid="toolbar-separator" />;
 }
 
-function OverflowMenu() {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const setShowSettingsDialog = useUIStore((s) => s.setShowSettingsDialog);
-  const setShowKeyboardShortcutsDialog = useUIStore((s) => s.setShowKeyboardShortcutsDialog);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
+function AceStudioLink() {
   return (
-    <div className="relative" ref={menuRef}>
-      <Button
-        variant="ghost"
-        size="md"
-        icon
-        onClick={() => setOpen(!open)}
-        title="More actions"
-        aria-label="More actions"
-        active={open}
-        data-testid="overflow-menu-trigger"
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-          <circle cx="3" cy="7" r="1.3" />
-          <circle cx="7" cy="7" r="1.3" />
-          <circle cx="11" cy="7" r="1.3" />
-        </svg>
-      </Button>
-      {open && (
-        <div
-          className="absolute top-full right-0 mt-1 w-48 bg-[#2a2a2a] border border-[#444] rounded-lg shadow-xl z-50 py-1"
-          data-testid="overflow-menu-dropdown"
-        >
-          <button
-            onClick={() => { setShowSettingsDialog(true); setOpen(false); }}
-            className="w-full text-left flex items-center justify-between px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white hover:bg-daw-surface-2 transition-colors"
-          >
-            <span>Settings</span>
-          </button>
-          <button
-            onClick={() => { setShowKeyboardShortcutsDialog(true); setOpen(false); }}
-            className="w-full text-left flex items-center justify-between px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white hover:bg-daw-surface-2 transition-colors"
-          >
-            <span>Keyboard Shortcuts</span>
-            <span className="text-[10px] text-zinc-500">?</span>
-          </button>
-        </div>
-      )}
-    </div>
+    <a
+      href="https://acestudio.ai/"
+      target="_blank"
+      rel="noreferrer"
+      title="Visit ACE Studio"
+      data-testid="toolbar-acestudio-link"
+      className="flex items-center gap-2 rounded-lg border border-cyan-400/25 bg-cyan-400/8 px-2.5 py-1 text-[11px] text-cyan-100 transition-colors hover:border-cyan-300/50 hover:bg-cyan-400/14"
+    >
+      <span className="font-semibold tracking-[0.14em] uppercase text-[10px] text-cyan-200">ACE Studio</span>
+      <span className="rounded-full bg-cyan-500/15 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.14em] text-cyan-100">
+        Official
+      </span>
+    </a>
   );
 }
 
@@ -291,8 +250,6 @@ export function Toolbar() {
   const toggleLoopRecording = useTransportStore((s) => s.toggleLoopRecording);
   const metronomeEnabled = useTransportStore((s) => s.metronomeEnabled);
   const toggleMetronome = useTransportStore((s) => s.toggleMetronome);
-  const zoomIn = useUIStore((s) => s.zoomIn);
-  const zoomOut = useUIStore((s) => s.zoomOut);
   const autoScrollEnabled = useUIStore((s) => s.autoScrollEnabled);
   const toggleAutoScroll = useUIStore((s) => s.toggleAutoScroll);
 
@@ -544,8 +501,8 @@ export function Toolbar() {
 
       <ToolbarSeparator />
 
-      {/* Command Palette + Overflow */}
-      <div className="flex items-center gap-0.5">
+      {/* Command Palette + ACE Studio */}
+      <div className="flex items-center gap-2">
         <button
           onClick={() => openCommandPalette()}
           className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-daw-surface-2 hover:text-white"
@@ -562,7 +519,7 @@ export function Toolbar() {
             Cmd+K
           </span>
         </button>
-        <OverflowMenu />
+        <AceStudioLink />
       </div>
 
       {/* Viewer mode badge */}
@@ -571,17 +528,6 @@ export function Toolbar() {
           VIEWER
         </div>
       )}
-
-      {/* Zoom controls */}
-      <ToolbarSeparator />
-      <div className="flex items-center gap-0.5">
-        <Button variant="ghost" size="sm" icon onClick={zoomOut} title="Zoom Out">
-          −
-        </Button>
-        <Button variant="ghost" size="sm" icon onClick={zoomIn} title="Zoom In">
-          +
-        </Button>
-      </div>
     </div>
   );
 }
