@@ -132,7 +132,7 @@ function OverflowMenu() {
       </Button>
       {open && (
         <div
-          className="absolute bottom-full right-0 mb-1 w-48 bg-[#2a2a2a] border border-[#444] rounded-lg shadow-xl z-50 py-1"
+          className="absolute top-full right-0 mt-1 w-48 bg-[#2a2a2a] border border-[#444] rounded-lg shadow-xl z-50 py-1"
           data-testid="overflow-menu-dropdown"
         >
           <button

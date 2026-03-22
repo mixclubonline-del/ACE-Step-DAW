@@ -169,6 +169,15 @@ describe('Toolbar visual hierarchy and grouping (#544)', () => {
     expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument();
   });
 
+  it('anchors the overflow menu below the toolbar button', () => {
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByTestId('overflow-menu-trigger'));
+
+    expect(screen.getByTestId('overflow-menu-dropdown')).toHaveClass('top-full', 'mt-1');
+    expect(screen.getByTestId('overflow-menu-dropdown')).not.toHaveClass('bottom-full');
+  });
+
   it('shows the loaded model badge and opens the library panel when clicked', () => {
     useProjectStore.setState((state) => ({
       project: state.project
