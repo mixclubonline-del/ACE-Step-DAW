@@ -101,10 +101,10 @@ function splitKeyScale(keyScale?: string) {
   };
 }
 
-const numericDisplayInputClass = 'h-8 bg-transparent px-0 text-center font-mono text-[18px] leading-none tracking-[0.01em] text-white focus:text-white focus:outline-none disabled:opacity-50';
-const selectClass = 'h-8 appearance-none bg-transparent px-0 font-mono text-[17px] leading-none tracking-[0.01em] text-white focus:text-white focus:outline-none disabled:opacity-50';
-const boxedReadoutClass = 'flex h-8 items-center rounded-[13px] border border-white/10 bg-white/[0.05] px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors hover:bg-white/[0.08]';
-const flatReadoutClass = 'relative flex h-8 items-center rounded-md px-1.5 transition-colors hover:bg-white/6';
+const numericDisplayInputClass = 'h-8 bg-transparent px-0 text-center font-mono text-[20px] leading-none tracking-[0.005em] text-white focus:text-white focus:outline-none disabled:opacity-50';
+const selectClass = 'h-8 appearance-none bg-transparent px-0 font-mono text-[18px] leading-none tracking-[0.005em] text-white focus:text-white focus:outline-none disabled:opacity-50';
+const boxedReadoutClass = 'flex h-8 items-center rounded-[13px] border border-white/12 bg-transparent px-2 transition-colors hover:border-white/20';
+const flatReadoutClass = 'relative flex h-8 items-center px-0.5';
 
 function ChevronDown({ className = '' }: { className?: string }) {
   return (
@@ -176,7 +176,7 @@ function ProjectTimingStrip({ disabled }: { disabled: boolean }) {
 
   return (
     <div
-      className="flex items-center gap-0.5 px-0.5"
+      className="flex items-center gap-0 px-0"
       data-testid="toolbar-project-timing"
     >
       <div className={boxedReadoutClass} title="Project tempo (beats per minute)">
@@ -199,7 +199,7 @@ function ProjectTimingStrip({ disabled }: { disabled: boolean }) {
 
       <ToolbarSeparator />
 
-      <div className={`${boxedReadoutClass} gap-1.5 px-2`} title="Project time signature">
+      <div className={`${boxedReadoutClass} gap-[0.3rem] px-1.5`} title="Project time signature">
         <input
           type="text"
           inputMode="numeric"
@@ -213,9 +213,9 @@ function ProjectTimingStrip({ disabled }: { disabled: boolean }) {
           disabled={disabled}
           aria-label="Time signature numerator"
           title="Time signature numerator"
-          className={`${numericDisplayInputClass} w-[1.45rem]`}
+          className={`${numericDisplayInputClass} w-[1.1rem]`}
         />
-        <span className="text-[17px] leading-none text-zinc-500">/</span>
+        <span className="text-[19px] leading-none text-zinc-500">/</span>
         <input
           type="text"
           inputMode="numeric"
@@ -227,7 +227,7 @@ function ProjectTimingStrip({ disabled }: { disabled: boolean }) {
           disabled={disabled}
           aria-label="Time signature denominator"
           title="Time signature denominator"
-          className={`${numericDisplayInputClass} w-[1.45rem]`}
+          className={`${numericDisplayInputClass} w-[1.1rem]`}
         />
       </div>
 
@@ -248,10 +248,10 @@ function HarmonySettingsStrip({ disabled }: { disabled: boolean }) {
 
   return (
     <div
-      className="flex items-center gap-0.5 px-0.5"
+      className="flex items-center gap-0 px-0"
       data-testid="toolbar-project-harmony"
     >
-      <div className={`${flatReadoutClass} pr-5`} title="Project key root note">
+      <div className={`${flatReadoutClass} pr-4`} title="Project key root note">
         <select
           value={keyScale.root}
           onChange={(event) => updateKeyScale(event.target.value, keyScale.mode)}
@@ -266,9 +266,9 @@ function HarmonySettingsStrip({ disabled }: { disabled: boolean }) {
             </option>
           ))}
         </select>
-        <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-zinc-300" />
+        <ChevronDown className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-zinc-300" />
       </div>
-      <div className={`${flatReadoutClass} pr-5`} title="Project scale mode selector">
+      <div className={`${flatReadoutClass} pr-4`} title="Project scale mode selector">
         <select
           value={keyScale.mode}
           onChange={(event) => updateKeyScale(keyScale.root, event.target.value)}
@@ -283,7 +283,7 @@ function HarmonySettingsStrip({ disabled }: { disabled: boolean }) {
             </option>
           ))}
         </select>
-        <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-zinc-300" />
+        <ChevronDown className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-zinc-300" />
       </div>
     </div>
   );
@@ -408,6 +408,10 @@ function ControlBarButton({
   disableHoverHighlight?: boolean;
   children: React.ReactNode;
 }) {
+  const hoverClass = active || disableHoverHighlight
+    ? ''
+    : 'hover:bg-transparent hover:text-white';
+
   return (
     <Button
       size="md"
@@ -419,7 +423,7 @@ function ControlBarButton({
       title={title}
       aria-label={title.replace(/\s*\(.+?\)$/, '')}
       data-onboarding-target={dataTarget}
-      className={`h-9 w-9 rounded-lg text-white ${disableHoverHighlight ? '' : 'hover:bg-white/8 hover:text-white'} ${className ?? ''}`}
+      className={`h-10 w-10 rounded-lg p-0 text-white/90 ${hoverClass} ${className ?? ''}`}
     >
       {children}
     </Button>
@@ -624,7 +628,7 @@ export function Toolbar() {
           onClick={() => setMainView('arrangement')}
           title="Arrangement View (Tab)"
         >
-          <svg width="19" height="19" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+          <svg width="21" height="21" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
             <path d="M2 4h10M2 7h10M2 10h10" />
           </svg>
         </ControlBarButton>
@@ -633,7 +637,7 @@ export function Toolbar() {
           onClick={() => setMainView('session')}
           title="Session View (Tab)"
         >
-          <svg width="19" height="19" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+          <svg width="21" height="21" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
             <path d="M4 2v10M7 2v10M10 2v10" />
           </svg>
         </ControlBarButton>
@@ -649,7 +653,7 @@ export function Toolbar() {
           title="Arrangement Markers (A)"
           disabled={!project}
         >
-          <svg width="19" height="19" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg width="21" height="21" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <rect x="1" y="5" width="4" height="5" rx="0.5" />
             <rect x="5" y="5" width="5" height="5" rx="0.5" />
             <rect x="10" y="5" width="3" height="5" rx="0.5" />
@@ -664,7 +668,7 @@ export function Toolbar() {
           title="Smart Controls (B)"
           disabled={!project}
         >
-          <svg width="19" height="19" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg width="21" height="21" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <circle cx="4" cy="7" r="2.5" />
             <circle cx="10" cy="7" r="2.5" />
             <line x1="4" y1="4.5" x2="4" y2="2" />
@@ -689,7 +693,7 @@ export function Toolbar() {
       >
         {/* Rewind */}
         <ControlBarButton onClick={() => void stop()} title="Go to Beginning (Enter)">
-          <svg width="17" height="15" viewBox="0 0 14 12" fill="currentColor">
+          <svg width="19" height="17" viewBox="0 0 14 12" fill="currentColor">
             <rect x="0" y="1" width="2" height="10" rx="0.5" />
             <path d="M13 1L5 6l8 5V1z" />
           </svg>
@@ -697,20 +701,20 @@ export function Toolbar() {
         {/* Play/Pause */}
         <button
           onClick={() => void (isPlaying ? pause() : play())}
-          className={`flex h-9 w-11 items-center justify-center rounded-xl transition-[color,background-color,transform] duration-150 active:scale-95 ${
+          className={`flex h-10 w-11 items-center justify-center rounded-xl transition-[color,background-color,transform] duration-150 active:scale-95 ${
             isPlaying
               ? 'bg-daw-accent text-white'
-              : 'bg-white/8 text-white hover:bg-white/12 hover:text-white'
+              : 'bg-transparent text-white/90 hover:bg-transparent hover:text-white'
           }`}
           title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
         >
           {isPlaying ? (
-            <svg width="16" height="18" viewBox="0 0 12 14" fill="currentColor">
+            <svg width="18" height="20" viewBox="0 0 12 14" fill="currentColor">
               <rect width="4" height="14" rx="1" />
               <rect x="8" width="4" height="14" rx="1" />
             </svg>
           ) : (
-            <svg width="18" height="20" viewBox="0 0 12 14" fill="currentColor">
+            <svg width="20" height="22" viewBox="0 0 12 14" fill="currentColor">
               <path d="M0 0L12 7L0 14V0Z" />
             </svg>
           )}
@@ -722,10 +726,10 @@ export function Toolbar() {
           onClick={toggleMetronome}
           title="Metronome (K)"
           aria-label="Metronome"
-          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-[color,background-color,transform] duration-150 active:scale-95 ${
+          className={`flex h-10 w-10 items-center justify-center rounded-xl transition-[color,background-color,transform] duration-150 active:scale-95 ${
             metronomeEnabled
               ? 'bg-[#8276f6] text-white'
-              : 'bg-white/8 text-white hover:bg-white/12 hover:text-white'
+              : 'bg-transparent text-white/90 hover:bg-transparent hover:text-white'
           }`}
         >
           <MetronomePulseIcon />

@@ -148,15 +148,19 @@ describe('Toolbar visual hierarchy and grouping (#544)', () => {
     const toolbar = screen.getByTestId('main-toolbar');
     const arrangementButton = screen.getByLabelText('Arrangement View');
     const playButton = screen.getByTitle('Play (Space)');
+    const tempoReadout = screen.getByTitle('Project tempo (beats per minute)');
+    const timeSignatureReadout = screen.getByTitle('Project time signature');
 
     expect(toolbar.className).toContain('bg-[#1f2226]');
     expect(toolbar.className).toContain('h-12');
-    expect(arrangementButton.className).toContain('h-9');
-    expect(arrangementButton.className).toContain('w-9');
-    expect(arrangementButton.className).toContain('text-white');
-    expect(playButton.className).toContain('h-9');
+    expect(arrangementButton.className).toContain('h-10');
+    expect(arrangementButton.className).toContain('w-10');
+    expect(arrangementButton.className).toContain('text-white/90');
+    expect(playButton.className).toContain('h-10');
     expect(playButton.className).toContain('w-11');
-    expect(playButton.className).toContain('bg-white/8');
+    expect(playButton.className).not.toContain('bg-white/8');
+    expect(tempoReadout.className).not.toContain('bg-white/[0.05]');
+    expect(timeSignatureReadout.className).toContain('gap-[0.3rem]');
   });
 
   it('removes the top toolbar Generate button in favor of the side dock entry', () => {
