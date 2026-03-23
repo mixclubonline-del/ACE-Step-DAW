@@ -59,18 +59,52 @@ describe('TrackHeader layout improvements (#546)', () => {
     useProjectStore.getState().createProject();
   });
 
-  describe('M/S/Arm button minimum sizes', () => {
-    it('primary buttons have min-w-[20px] and min-h-[20px] classes', () => {
+  describe('M/S/FX labeled circular buttons', () => {
+    it('M/S/FX buttons are circular with text labels', () => {
       render(<TrackHeader track={makeTrack()} {...defaultProps} />);
 
-      const muteBtn = screen.getByTitle('Mute (M)');
-      const soloBtn = screen.getByTitle('Solo (S)');
-      const armBtn = screen.getByTitle('Record arm');
+      const muteBtn = screen.getByLabelText('Mute Vocals');
+      const soloBtn = screen.getByLabelText('Solo Vocals');
+      const fxBtn = screen.getByLabelText('Effects for Vocals');
 
-      for (const btn of [muteBtn, soloBtn, armBtn]) {
-        expect(btn.classList.contains('min-w-[20px]')).toBe(true);
-        expect(btn.classList.contains('min-h-[20px]')).toBe(true);
+      for (const btn of [muteBtn, soloBtn, fxBtn]) {
+        expect(btn.classList.contains('rounded-full')).toBe(true);
       }
+      expect(muteBtn.textContent).toBe('M');
+      expect(soloBtn.textContent).toBe('S');
+      expect(fxBtn.textContent).toBe('FX');
+    });
+
+    it('mute button is amber when active', () => {
+      render(<TrackHeader track={makeTrack({ muted: true })} {...defaultProps} />);
+      const muteBtn = screen.getByLabelText('Mute Vocals');
+      expect(muteBtn.className).toContain('bg-amber-500');
+    });
+
+    it('solo button is emerald when active', () => {
+      render(<TrackHeader track={makeTrack({ soloed: true })} {...defaultProps} />);
+      const soloBtn = screen.getByLabelText('Solo Vocals');
+      expect(soloBtn.className).toContain('bg-emerald-500');
+    });
+
+    it('M/S/FX buttons have no SVG icons', () => {
+      render(<TrackHeader track={makeTrack()} {...defaultProps} />);
+      const muteBtn = screen.getByLabelText('Mute Vocals');
+      const soloBtn = screen.getByLabelText('Solo Vocals');
+      const fxBtn = screen.getByLabelText('Effects for Vocals');
+
+      for (const btn of [muteBtn, soloBtn, fxBtn]) {
+        expect(btn.querySelector('svg')).toBeNull();
+      }
+    });
+
+    it('primary actions container has no bordered styling', () => {
+      render(<TrackHeader track={makeTrack({ laneHeight: 80 })} {...defaultProps} />);
+      const container = screen.getByTestId('track-header-row1').querySelector('[data-primary-actions]');
+      expect(container).not.toBeNull();
+      // Should NOT have the old bordered container classes
+      expect(container!.className).not.toContain('border-[#494949]');
+      expect(container!.className).not.toContain('rounded-lg');
     });
   });
 
@@ -136,14 +170,13 @@ describe('TrackHeader layout improvements (#546)', () => {
       expect(row1.querySelector('[data-primary-actions]')).not.toBeNull();
     });
 
-    it('row2 contains volume slider and level meter', () => {
+    it('row2 contains combined fader-meter', () => {
       render(<TrackHeader track={makeTrack({ laneHeight: 80 })} {...defaultProps} />);
 
       const row2 = screen.getByTestId('track-header-row2');
-      // Volume slider should be in row2
-      expect(row2.querySelector('input[type="range"]')).not.toBeNull();
-      // Level meter should be in row2
-      expect(row2.querySelector('[aria-label]')).not.toBeNull();
+      // Combined fader-meter should be in row2
+      expect(row2.querySelector('[data-testid="fader-meter"]')).not.toBeNull();
+      expect(row2.querySelector('[role="slider"]')).not.toBeNull();
     });
   });
 
@@ -159,11 +192,13 @@ describe('TrackHeader layout improvements (#546)', () => {
   });
 
   describe('level meter minimum width', () => {
-    it('level meter container has min-w-[6px] class', () => {
+    it('stereo meter renders left and right channel bars', () => {
       render(<TrackHeader track={makeTrack()} {...defaultProps} />);
 
-      const meter = screen.getByLabelText(/level meter/i);
-      expect(meter.classList.contains('min-w-[6px]')).toBe(true);
+      const leftMeter = screen.getByTestId('meter-left');
+      const rightMeter = screen.getByTestId('meter-right');
+      expect(leftMeter).toBeInTheDocument();
+      expect(rightMeter).toBeInTheDocument();
     });
   });
 
@@ -173,6 +208,46 @@ describe('TrackHeader layout improvements (#546)', () => {
 
       const header = screen.getByRole('button', { name: /Track: Vocals/i });
       expect(header.classList.contains('group')).toBe(true);
+    });
+  });
+
+  describe('Phase C: secondary actions removed from visible header', () => {
+    it('does NOT render secondary actions container in the header', () => {
+      render(<TrackHeader track={makeTrack({ laneHeight: 80 })} {...defaultProps} />);
+
+      // The data-secondary-actions element should not exist anywhere
+      const secondaryActions = document.querySelector('[data-secondary-actions]');
+      expect(secondaryActions).toBeNull();
+    });
+
+    it('does NOT render monitor button in the header', () => {
+      render(<TrackHeader track={makeTrack({ laneHeight: 80 })} {...defaultProps} />);
+      expect(screen.queryByLabelText(/Input monitoring/)).not.toBeInTheDocument();
+    });
+
+    it('does NOT render freeze button in the header', () => {
+      render(<TrackHeader track={makeTrack({ laneHeight: 80 })} {...defaultProps} />);
+      expect(screen.queryByLabelText(/Freeze/)).not.toBeInTheDocument();
+    });
+
+    it('does NOT render effects bypass button in the header', () => {
+      render(<TrackHeader track={makeTrack({ laneHeight: 80 })} {...defaultProps} />);
+      expect(screen.queryByLabelText(/FX bypass/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Phase C: fader-meter in header', () => {
+    it('renders a fader-meter with correct aria-label in two-row layout', () => {
+      render(<TrackHeader track={makeTrack({ laneHeight: 80 })} {...defaultProps} />);
+      const fader = screen.getByLabelText('Vocals volume');
+      expect(fader).toBeInTheDocument();
+      expect(fader.getAttribute('role')).toBe('slider');
+    });
+
+    it('renders a fader-meter in single-row compact layout', () => {
+      render(<TrackHeader track={makeTrack({ laneHeight: 48 })} {...defaultProps} />);
+      const fader = screen.getByLabelText('Vocals volume');
+      expect(fader).toBeInTheDocument();
     });
   });
 });
