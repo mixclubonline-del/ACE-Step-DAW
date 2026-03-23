@@ -1179,7 +1179,7 @@ export function Timeline() {
 
 /** Empty placeholder rows below tracks — infinite grid like ACE Studio */
 const PLACEHOLDER_ROW_HEIGHT = DEFAULT_ARRANGEMENT_ROW_HEIGHT;
-const PLACEHOLDER_ROW_COUNT = DEFAULT_ARRANGEMENT_PLACEHOLDER_ROW_COUNT;  // enough to fill any viewport
+const PLACEHOLDER_ROW_COUNT = DEFAULT_ARRANGEMENT_PLACEHOLDER_ROW_COUNT; // keep vertical range aligned with the 128-track project cap
 
 function ArrangementEmptyTrackHeaderRow({
   slotIndex,
