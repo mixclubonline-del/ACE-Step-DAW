@@ -3,7 +3,7 @@ import { useProjectStore } from '../../store/projectStore';
 import { useUIStore } from '../../store/uiStore';
 import { useTransportStore } from '../../store/transportStore';
 import { useTransport } from '../../hooks/useTransport';
-import { getBarDuration, getBeatDuration } from '../../utils/time';
+import { getBarDuration, getBeatDuration, snapToGrid } from '../../utils/time';
 import { beatToTime, getBeatAtBar, getTimeSignatureAtBar, getTimeSignatureBeatLength } from '../../utils/tempoMap';
 import { getScrubPreviewRate } from '../../utils/scrubMath';
 import { TIMELINE_RULER_HEIGHT } from './timelineLayout';
@@ -12,6 +12,7 @@ import { DEFAULT_MEASURES } from '../../constants/defaults';
 
 const LOOP_MIN_DURATION = 0.01;
 const LOOP_HANDLE_WIDTH = 10;
+const PLAYHEAD_LOOP_DRAG_THRESHOLD_PX = 4;
 
 export function TimeRuler() {
   const project = useProjectStore((s) => s.project);
@@ -317,10 +318,50 @@ export function TimeRuler() {
 const PlayheadRulerIndicator = memo(function PlayheadRulerIndicator({ pixelsPerSecond }: { pixelsPerSecond: number }) {
   const playStartTime = useTransportStore((s) => s.playStartTime);
   const isPlaying = useTransportStore((s) => s.isPlaying);
+  const setLoopRegion = useTransportStore((s) => s.setLoopRegion);
   const timelineFocused = useUIStore((s) => s.timelineFocused);
+  const project = useProjectStore((s) => s.project);
   // Triangle always stays at the anchor position (playStartTime)
   const x = playStartTime * pixelsPerSecond;
   const blinking = !isPlaying && timelineFocused;
+
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !project) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const originX = event.clientX;
+    let hasDragged = false;
+
+    const updateLoopRegionFromPointer = (clientX: number, altKey: boolean) => {
+      const deltaTime = (clientX - originX) / pixelsPerSecond;
+      const rawEnd = Math.max(0, Math.min(project.totalDuration, playStartTime + deltaTime));
+      const snappedEnd = altKey ? rawEnd : snapToGrid(rawEnd, project.bpm, 1, project.tempoMap);
+      const start = Math.min(playStartTime, snappedEnd);
+      const end = Math.max(playStartTime, snappedEnd);
+      if (end - start < LOOP_MIN_DURATION) return;
+      setLoopRegion(start, end);
+      useTransportStore.setState({ loopEnabled: true });
+    };
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - originX;
+      if (!hasDragged && Math.abs(deltaX) < PLAYHEAD_LOOP_DRAG_THRESHOLD_PX) return;
+      hasDragged = true;
+      updateLoopRegionFromPointer(moveEvent.clientX, moveEvent.altKey);
+    };
+
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      if (!hasDragged) return;
+      updateLoopRegionFromPointer(upEvent.clientX, upEvent.altKey);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }, [pixelsPerSecond, playStartTime, project, setLoopRegion]);
 
   // SVG inverted equilateral triangle with crisp 1px white stroke.
   // Odd width (13px) so center pixel aligns with the 1px playhead line.
@@ -329,15 +370,17 @@ const PlayheadRulerIndicator = memo(function PlayheadRulerIndicator({ pixelsPerS
   const svgH = 12;
   return (
     <div
-      className="absolute bottom-[-1px] z-30 pointer-events-none"
-      style={{ left: x, transform: `translate(-${Math.floor(svgW / 2)}px, 0px)` }}
+      className="absolute bottom-[-1px] z-30 h-full w-5 cursor-col-resize"
+      style={{ left: x, transform: 'translateX(-50%)' }}
+      onPointerDown={handlePointerDown}
+      data-testid="timeline-playhead-loop-handle"
     >
       <svg
         width={svgW}
         height={svgH}
         viewBox={`0 0 ${svgW} ${svgH}`}
         className={blinking ? 'playhead-triangle-blink' : undefined}
-        style={{ display: 'block' }}
+        style={{ display: 'block', margin: 'auto', pointerEvents: 'none' }}
       >
         <polygon
           points={`0.5,0.5 ${svgW - 0.5},0.5 ${svgW / 2},${svgH - 0.5}`}

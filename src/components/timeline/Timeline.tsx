@@ -22,6 +22,7 @@ import { ArrangementMarkers } from './ArrangementMarkers';
 import { SelectionFloatingToolbar } from './SelectionFloatingToolbar';
 import { toastInfo } from '../../hooks/useToast';
 import {
+  clampTimelineScrollLeft,
   clampTimelinePixelsPerSecond,
   DEFAULT_TIMELINE_PIXELS_PER_SECOND,
   getNextTimelineZoomLevel,
@@ -226,6 +227,7 @@ export function Timeline() {
   const selectedClipIds = useUIStore((s) => s.selectedClipIds);
   const keyboardContext = useUIStore((s) => s.keyboardContext);
   const timelineZoomRequest = useUIStore((s) => s.timelineZoomRequest);
+  const autoScrollEnabled = useUIStore((s) => s.autoScrollEnabled);
   const setScrollX = useUIStore((s) => s.setScrollX);
   const setScrollY = useUIStore((s) => s.setScrollY);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -506,7 +508,9 @@ export function Timeline() {
       return;
     }
 
-    const nextViewport = getTimelineFitViewport(targetRange, nextViewportWidth, project.totalDuration);
+    const nextViewport = getTimelineFitViewport(targetRange, nextViewportWidth, project.totalDuration, {
+      paddingPx: timelineZoomRequest.mode === 'project' ? 0 : 40,
+    });
     setPixelsPerSecond(nextViewport.pixelsPerSecond);
     setScrollX(nextViewport.scrollLeft);
     container.scrollLeft = nextViewport.scrollLeft;
@@ -527,6 +531,27 @@ export function Timeline() {
     trackListWidth,
     timelineZoomRequest,
   ]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || !project || !isPlaying || !autoScrollEnabled) return;
+
+    const timelineViewportWidth = Math.max(1, (container.clientWidth - trackListWidth) || window.innerWidth || 1);
+    const fixedPlayheadViewportX = Math.min(
+      Math.max(120, timelineViewportWidth * 0.35),
+      Math.max(120, timelineViewportWidth - 96),
+    );
+    const nextScrollLeft = clampTimelineScrollLeft(
+      currentTime * pixelsPerSecond - fixedPlayheadViewportX,
+      project.totalDuration,
+      pixelsPerSecond,
+      timelineViewportWidth,
+    );
+
+    if (Math.abs(container.scrollLeft - nextScrollLeft) < 1) return;
+    container.scrollLeft = nextScrollLeft;
+    setScrollX(nextScrollLeft);
+  }, [autoScrollEnabled, currentTime, isPlaying, pixelsPerSecond, project, setScrollX, trackListWidth]);
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {

@@ -11,6 +11,7 @@ import { DEFAULT_MEASURES } from '../../constants/defaults';
 import { KEY_SCALES } from '../../constants/tracks';
 import { formatTime, formatBarsBeats } from '../../utils/time';
 import { clampTimelinePixelsPerSecond } from '../../utils/timelineZoom';
+import { getBarAtBeat, getBeatAtBar, timeToBeat } from '../../utils/tempoMap';
 import { Button } from '../ui/Button';
 
 const KEY_ROOT_LABELS: Record<string, string> = {
@@ -87,6 +88,7 @@ function ProjectSettingsStrip({ disabled }: { disabled: boolean }) {
   const updateProject = useProjectStore((s) => s.updateProject);
   const pixelsPerSecond = useUIStore((s) => s.pixelsPerSecond);
   const setPixelsPerSecond = useUIStore((s) => s.setPixelsPerSecond);
+  const zoomTimelineToProject = useUIStore((s) => s.zoomTimelineToProject);
   const [bpmInput, setBpmInput] = useState('120');
   const [measuresInput, setMeasuresInput] = useState(String(DEFAULT_MEASURES));
   const [tsNumeratorInput, setTsNumeratorInput] = useState('4');
@@ -122,6 +124,7 @@ function ProjectSettingsStrip({ disabled }: { disabled: boolean }) {
     setMeasuresInput(String(nextMeasures));
     if (project && nextMeasures !== project.measures) {
       updateProject({ measures: nextMeasures });
+      zoomTimelineToProject();
     }
   };
 
@@ -133,6 +136,7 @@ function ProjectSettingsStrip({ disabled }: { disabled: boolean }) {
     setTsNumeratorInput(String(nextTs));
     if (project && nextTs !== project.timeSignature) {
       updateProject({ timeSignature: nextTs });
+      zoomTimelineToProject();
     }
   };
 
@@ -144,6 +148,7 @@ function ProjectSettingsStrip({ disabled }: { disabled: boolean }) {
     setTsDenominatorInput(String(nextDenom));
     if (project && nextDenom !== (project.timeSignatureDenominator ?? 4)) {
       updateProject({ timeSignatureDenominator: nextDenom });
+      zoomTimelineToProject();
     }
   };
 
@@ -311,6 +316,49 @@ function LCDDisplay() {
           Pass {loopCycleCount}
         </span>
       )}
+    </div>
+  );
+}
+
+function MetronomePulseIcon() {
+  const project = useProjectStore((s) => s.project);
+  const currentTime = useTransportStore((s) => s.currentTime);
+  const isPlaying = useTransportStore((s) => s.isPlaying);
+
+  const denominator = Math.max(1, Math.min(8, project?.timeSignatureDenominator ?? 4));
+  const columns = denominator <= 4 ? 2 : 4;
+
+  let activeIndex = 0;
+  if (project) {
+    const totalBeats = timeToBeat(currentTime, project.tempoMap, project.bpm);
+    const fallbackDenominator = project.timeSignatureDenominator ?? 4;
+    const bar = getBarAtBeat(totalBeats, project.timeSignatureMap, project.timeSignature, fallbackDenominator);
+    const barStartBeat = getBeatAtBar(bar, project.timeSignatureMap, project.timeSignature, fallbackDenominator);
+    const nextBarBeat = getBeatAtBar(bar + 1, project.timeSignatureMap, project.timeSignature, fallbackDenominator);
+    const barLength = Math.max(0.0001, nextBarBeat - barStartBeat);
+    const progress = Math.max(0, Math.min(0.9999, (totalBeats - barStartBeat) / barLength));
+    activeIndex = Math.min(denominator - 1, Math.floor(progress * denominator));
+  }
+
+  return (
+    <div
+      className="grid h-5 w-5 gap-[3px]"
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      aria-hidden="true"
+      data-testid="metronome-pulse-icon"
+    >
+      {Array.from({ length: denominator }).map((_, index) => {
+        const isFilled = isPlaying ? index <= activeIndex : index === 0;
+        return (
+          <span
+            key={index}
+            data-testid="metronome-pulse-dot"
+            className={`block h-[7px] w-[7px] rounded-full transition-colors duration-100 ${
+              isFilled ? 'bg-white' : 'bg-white/30'
+            }`}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -652,12 +700,7 @@ export function Toolbar() {
               : 'bg-white/8 text-white hover:bg-white/12 hover:text-white'
           }`}
         >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <circle cx="6" cy="6" r="3" />
-            <circle cx="14" cy="6" r="3" />
-            <circle cx="6" cy="14" r="3" />
-            <circle cx="14" cy="14" r="3" />
-          </svg>
+          <MetronomePulseIcon />
         </button>
         <ControlBarButton active={loopEnabled} onClick={toggleLoop} title="Loop (C)">
           <svg width="19" height="19" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

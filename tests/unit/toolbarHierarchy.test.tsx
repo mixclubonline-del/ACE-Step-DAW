@@ -199,6 +199,17 @@ describe('Toolbar visual hierarchy and grouping (#544)', () => {
     expect(screen.queryByTitle('Capture MIDI (F)')).not.toBeInTheDocument();
   });
 
+  it('renders metronome pulse dots based on the time signature denominator', () => {
+    useProjectStore.setState((state) => ({
+      project: state.project
+        ? { ...state.project, timeSignatureDenominator: 6 }
+        : state.project,
+    }));
+    render(<Toolbar />);
+
+    expect(screen.getAllByTestId('metronome-pulse-dot')).toHaveLength(6);
+  });
+
   it('updates project key settings from the top-toolbar strip', () => {
     render(<Toolbar />);
 
