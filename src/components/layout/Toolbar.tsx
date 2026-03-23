@@ -285,15 +285,15 @@ function LCDDisplay() {
   const showLoopCycleBadge = isRecording && loopRecordingEnabled && loopCycleCount > 0;
 
   return (
-    <div className="flex min-w-[220px] shrink-0 items-end justify-center gap-3 px-2 py-1 font-mono tabular-nums">
+    <div className="flex min-w-[220px] shrink-0 items-end justify-center gap-2.5 px-2 py-1 font-mono tabular-nums">
       <span
-        className={`text-[20px] leading-none tracking-[0.14em] ${barsBeatsColor}`}
+        className={`text-[22px] leading-none tracking-[0.09em] ${barsBeatsColor}`}
         title="Transport position (bars.beats.ticks)"
       >
         {displayBarsBeats}
       </span>
       <span
-        className="pb-[2px] text-[14px] leading-none text-zinc-500"
+        className="pb-[1px] text-[15px] leading-none tracking-[0.02em] text-zinc-500"
         title="Transport elapsed time"
       >
         {formatTime(currentTime)}

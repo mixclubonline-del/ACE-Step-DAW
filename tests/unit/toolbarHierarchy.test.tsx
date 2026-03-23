@@ -147,6 +147,8 @@ describe('Toolbar visual hierarchy and grouping (#544)', () => {
     const playButton = screen.getByTitle('Play (Space)');
     const tempoReadout = screen.getByTitle('Project tempo (beats per minute)');
     const timeSignatureReadout = screen.getByTitle('Project time signature');
+    const transportPosition = screen.getByTitle('Transport position (bars.beats.ticks)');
+    const transportTime = screen.getByTitle('Transport elapsed time');
 
     expect(toolbar.className).toContain('bg-[#1f2226]');
     expect(toolbar.className).toContain('h-12');
@@ -159,6 +161,8 @@ describe('Toolbar visual hierarchy and grouping (#544)', () => {
     expect(tempoReadout.className).not.toContain('border');
     expect(tempoReadout.className).not.toContain('rounded');
     expect(timeSignatureReadout.className).toContain('gap-[0.18rem]');
+    expect(transportPosition.className).toContain('text-[22px]');
+    expect(transportTime.className).toContain('text-[15px]');
   });
 
   it('removes the top toolbar Generate button in favor of the side dock entry', () => {
