@@ -97,7 +97,7 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
   const setOpenPianoRoll = useUIStore((s) => s.setOpenPianoRoll);
   const contextWindow = useUIStore((s) => s.contextWindow);
   const selectWindow = useUIStore((s) => s.selectWindow);
-  const setRepaintModal = useUIStore((s) => s.setRepaintModal);
+  const openEnhancer = useUIStore((s) => s.openEnhancer);
   const setVocal2BGMModal = useUIStore((s) => s.setVocal2BGMModal);
   const setAnalysisPanel = useUIStore((s) => s.setAnalysisPanel);
   const setStemSeparationModal = useUIStore((s) => s.setStemSeparationModal);
@@ -1213,8 +1213,7 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
           onRegenerate: () => { closeCtxMenu(); regenerateClip(clip.id); },
           hasPrompt: !!clip.prompt,
           isReady,
-          onCreateCover: () => { closeCtxMenu(); useUIStore.getState().setMusicEnhancerOpen(true); },
-          onRepaint: () => {
+          onEnhance: () => {
             closeCtxMenu();
             let range: { start: number; end: number } | null = null;
             if (selectWindow) {
@@ -1222,7 +1221,7 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
               const re = Math.min(selectWindow.endTime, clip.startTime + clip.duration);
               if (re > rs) range = { start: rs, end: re };
             }
-            setRepaintModal(clip.id, range);
+            openEnhancer(clip.id, track.id, range);
           },
           ...(hasAudio ? { onSeparateStems: () => { closeCtxMenu(); setStemSeparationModal(clip.id); } } : {}),
           ...(isVocalTrack ? { onGenerateAccompaniment: () => { closeCtxMenu(); setVocal2BGMModal(clip.id); } } : {}),
@@ -1246,7 +1245,7 @@ export function ClipBlock({ clip, track }: ClipBlockProps) {
             onClose={closeCtxMenu}
             onInspireMe={() => { closeCtxMenu(); useUIStore.getState().setShowGenerationPanel(true); }}
             onAddLayer={() => { closeCtxMenu(); useUIStore.getState().setAddLayerOpen(true); }}
-            onMusicEnhancer={() => { closeCtxMenu(); useUIStore.getState().setMusicEnhancerOpen(true); }}
+            onMusicEnhancer={() => { closeCtxMenu(); openEnhancer(clip.id, track.id); }}
             clipAIContext={clipAIContext}
             onOpenMidi={isMidiClip ? () => { closeCtxMenu(); setOpenPianoRoll(track.id, clip.id); } : undefined}
             onConvertToStrudel={isMidiClip ? () => {
