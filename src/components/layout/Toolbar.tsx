@@ -337,15 +337,27 @@ function MetronomePulseIcon() {
       data-testid="metronome-pulse-icon"
     >
       {pulsePositions.map((position, index) => {
-        const isFilled = isPlaying ? index <= activeIndex : index === 0;
+        const dotState = !isPlaying
+          ? (index === 0 ? 'current' : 'upcoming')
+          : index === activeIndex
+            ? 'current'
+            : index < activeIndex
+              ? 'passed'
+              : 'upcoming';
+
+        const dotClassName = dotState === 'current'
+          ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.35)]'
+          : dotState === 'passed'
+            ? 'bg-white/55'
+            : 'bg-white/22';
+
         return (
           <span
             key={index}
             data-testid="metronome-pulse-dot"
             data-step-index={index}
-            className={`absolute block h-[9.5px] w-[9.5px] rounded-full transition-colors duration-100 ${
-              isFilled ? 'bg-white' : 'bg-white/30'
-            }`}
+            data-state={dotState}
+            className={`absolute block h-[9.5px] w-[9.5px] rounded-full transition-[background-color,box-shadow] duration-100 ${dotClassName}`}
             style={{
               left: `${position.left}%`,
               top: `${position.top}%`,

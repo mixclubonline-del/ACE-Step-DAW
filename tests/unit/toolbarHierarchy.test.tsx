@@ -295,6 +295,22 @@ describe('Toolbar visual hierarchy and grouping (#544)', () => {
     expect(dots[3]).toHaveStyle({ left: '24%', top: '76%' });
   });
 
+  it('emphasizes the current metronome pulse more than passed pulses', () => {
+    useProjectStore.setState((state) => ({
+      project: state.project
+        ? { ...state.project, timeSignature: 4, timeSignatureDenominator: 4 }
+        : state.project,
+    }));
+    useTransportStore.setState({ isPlaying: true, currentTime: 0.75 });
+    render(<Toolbar />);
+
+    const dots = screen.getAllByTestId('metronome-pulse-dot');
+    expect(dots[0]).toHaveAttribute('data-state', 'passed');
+    expect(dots[1]).toHaveAttribute('data-state', 'current');
+    expect(dots[2]).toHaveAttribute('data-state', 'upcoming');
+    expect(dots[1].className).toContain('shadow-');
+  });
+
   it('updates project key settings from the top-toolbar strip', () => {
     render(<Toolbar />);
 
