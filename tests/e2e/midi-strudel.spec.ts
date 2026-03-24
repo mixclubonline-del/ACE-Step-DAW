@@ -135,6 +135,10 @@ test.describe('MIDI to Strudel', () => {
     expect(result.code).toContain('stack(');
     expect(result.code).toContain('note(');
     await expect(page.getByTestId('strudel-editor-panel')).toBeVisible();
+    await expect(page.getByTestId('strudel-editor-panel').getByRole('button', { name: 'play' })).toBeVisible();
+    await expect(page.getByTestId('strudel-editor-panel').getByRole('button', { name: 'snapshot' })).toBeVisible();
+    await expect(page.getByTestId('strudel-editor-panel').getByRole('button', { name: 'MIDI' })).toBeVisible();
+    await expect(page.getByTestId('strudel-editor-panel').getByRole('button', { name: 'Drums' })).toBeVisible();
     expect(setup.trackId).toBeTruthy();
     expect(setup.clipId).toBeTruthy();
   });

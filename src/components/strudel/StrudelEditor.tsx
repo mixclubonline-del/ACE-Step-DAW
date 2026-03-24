@@ -9,6 +9,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useProjectStore } from '../../store/projectStore';
 import { Z } from '../../utils/zIndex';
 import type { StrudelFromMidiOptions } from '../../types/project';
+import { registerStrudelEditorPlaybackStop } from '../../engine/strudelEditorPlayback';
 const DEFAULT_CODE = `s("[bd <hh oh>]*2, [~ cp]*2")`;
 
 // Inject CSS to constrain the autocomplete info panel
@@ -52,6 +53,8 @@ export function StrudelEditor() {
   const convertMidiTrackToStrudel = useProjectStore((s) => s.convertMidiTrackToStrudel);
   const convertMidiFileToStrudel = useProjectStore((s) => s.convertMidiFileToStrudel);
   const applyStrudelCodeToTrack = useProjectStore((s) => s.applyStrudelCodeToTrack);
+  const captureStrudelVersion = useProjectStore((s) => s.captureStrudelVersion);
+  const restoreStrudelVersion = useProjectStore((s) => s.restoreStrudelVersion);
 
   const [editorHeight, setEditorHeight] = useState(380);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,6 +66,7 @@ export function StrudelEditor() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SidebarTab | null>(null);
   const [consoleMessages, setConsoleMessages] = useState<string[]>([]);
+  const [showVersionMenu, setShowVersionMenu] = useState(false);
   const [importOptions, setImportOptions] = useState<Pick<
     StrudelFromMidiOptions,
     'notationType' | 'timingStyle' | 'quantize' | 'measuresPerLine' | 'soundMapping' | 'targetTrackMode'
@@ -88,6 +92,17 @@ export function StrudelEditor() {
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const stopEditorPlayback = useCallback(() => {
+    if (editorRef.current) {
+      try {
+        editorRef.current.stop();
+      } catch {
+        // Ignore stop failures from stale editor instances.
+      }
+    }
+    setIsPlaying(false);
+  }, []);
+
   const activeStrudelTrack = useMemo(() => {
     if (!project) return null;
     return (
@@ -98,6 +113,7 @@ export function StrudelEditor() {
       ?? null
     );
   }, [openStrudelEditorTrackId, project]);
+  const versions = activeStrudelTrack?.strudelVersions ?? [];
 
   useEffect(() => {
     if (!strudelPanelOpen || !project || activeStrudelTrack) return;
@@ -218,24 +234,33 @@ export function StrudelEditor() {
 
     return () => {
       mounted = false;
-      if (editorRef.current) { try { editorRef.current.stop(); } catch { /* */ } editorRef.current = null; }
+      stopEditorPlayback();
+      editorRef.current = null;
       if (containerRef.current) containerRef.current.innerHTML = '';
-      setIsPlaying(false);
     };
-  }, [activeStrudelTrack, openStrudelEditorTrackId, setOpenStrudelEditor, strudelPanelOpen]);
+  }, [activeStrudelTrack, openStrudelEditorTrackId, setOpenStrudelEditor, stopEditorPlayback, strudelPanelOpen]);
+
+  useEffect(() => {
+    if (!strudelPanelOpen) {
+      registerStrudelEditorPlaybackStop(null);
+      return;
+    }
+
+    registerStrudelEditorPlaybackStop(stopEditorPlayback);
+    return () => registerStrudelEditorPlaybackStop(null);
+  }, [stopEditorPlayback, strudelPanelOpen]);
 
   // Play / Stop
   const togglePlay = useCallback(() => {
     if (!editorRef.current) return;
     if (isPlaying) {
-      editorRef.current.stop();
-      setIsPlaying(false);
+      stopEditorPlayback();
       setConsoleMessages((prev) => [...prev.slice(-50), '⏹ stopped']);
     } else {
       editorRef.current.evaluate();
       setIsPlaying(true);
     }
-  }, [isPlaying]);
+  }, [isPlaying, stopEditorPlayback]);
 
   // Update (re-evaluate while playing)
   const handleUpdate = useCallback(() => {
@@ -420,6 +445,54 @@ export function StrudelEditor() {
 
         <div className="w-px h-4 bg-zinc-700 mx-1" />
 
+        {/* Version controls */}
+        {activeStrudelTrack && (
+          <>
+            <button
+              onClick={() => {
+                captureStrudelVersion(activeStrudelTrack.id);
+                setConsoleMessages((prev) => [...prev.slice(-50), '📸 version captured']);
+              }}
+              className="px-1.5 py-0.5 rounded text-[10px] text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-200 transition-colors"
+              title="Capture current code as a version snapshot"
+            >
+              snapshot
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowVersionMenu(!showVersionMenu)}
+                disabled={versions.length === 0}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+                  versions.length === 0 ? 'text-zinc-600 cursor-default' : 'text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-200'
+                }`}
+                title={versions.length === 0 ? 'No versions captured yet' : `${versions.length} version(s)`}
+              >
+                v{versions.length}
+                <svg width="6" height="6" viewBox="0 0 8 8" fill="currentColor" className="opacity-40"><path d="M1 3l3 3 3-3" /></svg>
+              </button>
+              {showVersionMenu && versions.length > 0 && (
+                <div className="absolute bottom-full right-0 mb-1 bg-zinc-800 border border-zinc-600 rounded shadow-lg py-0.5 min-w-[180px] max-h-[200px] overflow-y-auto z-20">
+                  {versions.map((version, index) => (
+                    <button
+                      key={version.id}
+                      onClick={() => {
+                        restoreStrudelVersion(activeStrudelTrack.id, index);
+                        setShowVersionMenu(false);
+                        setConsoleMessages((prev) => [...prev.slice(-50), `↩ restored v${index + 1}`]);
+                      }}
+                      className="w-full text-left px-2 py-1 text-[11px] text-zinc-400 hover:bg-zinc-700 hover:text-white flex items-center justify-between"
+                    >
+                      <span>{version.label || `v${index + 1}`}</span>
+                      <span className="text-[9px] text-zinc-600">{new Date(version.timestamp).toLocaleTimeString()}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="w-px h-4 bg-zinc-700 mx-1" />
+          </>
+        )}
+
         {/* Bars */}
         <div className="relative">
           <button
@@ -456,8 +529,36 @@ export function StrudelEditor() {
           )}
         </button>
 
+        {/* Freeze to MIDI / Drums */}
+        {activeStrudelTrack && (
+          <>
+            <button
+              onClick={async () => {
+                const track = await useProjectStore.getState().freezeStrudelToMidi(activeStrudelTrack.id, bounceBars);
+                setConsoleMessages((prev) => [...prev.slice(-50), track ? '🎹 frozen to MIDI' : '⚠ no melodic content']);
+              }}
+              disabled={!project || isLoading}
+              className="px-1.5 py-0.5 rounded text-[10px] text-emerald-400/70 hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors"
+              title={`Freeze ${bounceBars} bars to MIDI piano roll track`}
+            >
+              MIDI
+            </button>
+            <button
+              onClick={async () => {
+                const track = await useProjectStore.getState().freezeStrudelToDrumMachine(activeStrudelTrack.id, bounceBars);
+                setConsoleMessages((prev) => [...prev.slice(-50), track ? '🥁 frozen to drums' : '⚠ no percussion content']);
+              }}
+              disabled={!project || isLoading}
+              className="px-1.5 py-0.5 rounded text-[10px] text-amber-400/70 hover:bg-amber-500/10 hover:text-amber-400 transition-colors"
+              title={`Freeze ${bounceBars} bars to drum machine track`}
+            >
+              Drums
+            </button>
+          </>
+        )}
+
         {/* Close */}
-        <button onClick={() => { if (editorRef.current) { try { editorRef.current.stop(); } catch {} } setIsPlaying(false); setOpenStrudelEditor(null); }}
+        <button onClick={() => { stopEditorPlayback(); setOpenStrudelEditor(null); }}
           className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-700/50 hover:text-zinc-200" title="Close">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 2l6 6M8 2l-6 6" /></svg>
         </button>
@@ -685,6 +786,7 @@ export function StrudelEditor() {
       </div>
 
       {showBarsMenu && <div className="fixed inset-0 z-[1]" onClick={() => setShowBarsMenu(false)} />}
+      {showVersionMenu && <div className="fixed inset-0 z-[1]" onClick={() => setShowVersionMenu(false)} />}
       <input
         ref={fileInputRef}
         type="file"

@@ -714,6 +714,10 @@ export interface ProjectState {
   getStrudelPatternInfo: (trackId: string) => Promise<import('../engine/strudelEngine').StrudelPatternInfo | null>;
   /** Freeze/bounce strudel track audio to a new stems track with an audio clip. */
   freezeStrudelToAudio: (trackId: string, bars: number, onProgress?: (progress: number) => void) => Promise<Track>;
+  /** Freeze strudel code into a piano roll track by evaluating the pattern without audio. */
+  freezeStrudelToMidi: (trackId: string, bars?: number) => Promise<Track | null>;
+  /** Freeze strudel percussion into a sequencer track and visible timeline clip. */
+  freezeStrudelToDrumMachine: (trackId: string, bars?: number, stepsPerBar?: number) => Promise<Track | null>;
   /** Convert a MIDI clip to Strudel code without mutating the source clip. */
   convertMidiClipToStrudel: (clipId: string, options?: Partial<StrudelFromMidiOptions>) => Promise<StrudelFromMidiResult | null>;
   /** Convert all MIDI clips on a track to Strudel code without mutating the source track. */
@@ -5094,6 +5098,160 @@ export const useProjectStore = create<ProjectState>()(
       source: 'uploaded' as const,
       audioDuration: durationSeconds,
     }];
+
+    const newTracks = [...get().project!.tracks, newTrack];
+    const nextProject = ensureProjectSession({
+      ...get().project!,
+      updatedAt: Date.now(),
+      totalDuration: computeTotalDuration(
+        newTracks,
+        get().project!.measures,
+        bpm,
+        get().project!.timeSignature,
+        get().project!.timeSignatureDenominator,
+        get().project!.tempoMap,
+        get().project!.timeSignatureMap,
+      ),
+      tracks: newTracks,
+    });
+    set({ project: nextProject });
+    return newTrack;
+  },
+
+  freezeStrudelToMidi: async (trackId, bars = 4) => {
+    const state = get();
+    if (_isViewerMode()) return null;
+    if (!state.project) return null;
+    const track = state.project.tracks.find((candidate) => candidate.id === trackId);
+    if (!track || track.trackType !== 'strudel') return null;
+    if (!track.strudelCode?.trim()) return null;
+
+    _pushHistory(state.project, { scope: 'arrangement', label: 'Freeze strudel to MIDI' });
+
+    const bpm = state.project.bpm ?? 120;
+    const beatsPerBar = typeof state.project.timeSignature === 'number' ? state.project.timeSignature : 4;
+    const { evaluateStrudelPatternPure, queryPatternEvents } = await import('../engine/strudelEngine');
+    const pattern = await evaluateStrudelPatternPure(track.strudelCode);
+    if (!pattern) return null;
+
+    const events = queryPatternEvents(pattern, 0, bars);
+    const { strudelEventsToMidiNotes } = await import('../services/strudelConversion');
+    const midiNotes = strudelEventsToMidiNotes(events, beatsPerBar);
+    if (midiNotes.length === 0) return null;
+
+    const newTrack = createTrackFromTemplate(
+      get().project!.tracks,
+      'keyboard',
+      'pianoRoll',
+    );
+    newTrack.displayName = `${track.displayName} (MIDI)`;
+    newTrack.color = track.color;
+
+    const durationSeconds = (bars * beatsPerBar * 60) / bpm;
+    const clipId = uuidv4();
+    newTrack.clips = [{
+      id: clipId,
+      trackId: newTrack.id,
+      startTime: 0,
+      duration: durationSeconds,
+      prompt: '',
+      lyrics: '',
+      generationStatus: 'ready' as const,
+      generationJobId: null,
+      cumulativeMixKey: null,
+      isolatedAudioKey: null,
+      waveformPeaks: null,
+      source: 'uploaded' as const,
+      midiData: {
+        notes: midiNotes,
+        grid: '1/16' as const,
+      },
+    }];
+
+    const newTracks = [...get().project!.tracks, newTrack];
+    const nextProject = ensureProjectSession({
+      ...get().project!,
+      updatedAt: Date.now(),
+      totalDuration: computeTotalDuration(
+        newTracks,
+        get().project!.measures,
+        bpm,
+        get().project!.timeSignature,
+        get().project!.timeSignatureDenominator,
+        get().project!.tempoMap,
+        get().project!.timeSignatureMap,
+      ),
+      tracks: newTracks,
+    });
+    set({ project: nextProject });
+    return newTrack;
+  },
+
+  freezeStrudelToDrumMachine: async (trackId, bars = 1, stepsPerBar = 16) => {
+    const state = get();
+    if (_isViewerMode()) return null;
+    if (!state.project) return null;
+    const track = state.project.tracks.find((candidate) => candidate.id === trackId);
+    if (!track || track.trackType !== 'strudel') return null;
+    if (!track.strudelCode?.trim()) return null;
+
+    _pushHistory(state.project, { scope: 'arrangement', label: 'Freeze strudel to drum machine' });
+
+    const beatsPerBar = typeof state.project.timeSignature === 'number' ? state.project.timeSignature : 4;
+    const { evaluateStrudelPatternPure, queryPatternEvents } = await import('../engine/strudelEngine');
+    const pattern = await evaluateStrudelPatternPure(track.strudelCode);
+    if (!pattern) return null;
+
+    const events = queryPatternEvents(pattern, 0, bars);
+    const { strudelEventsToDrumPattern, sequencerPatternToMidiData } = await import('../services/strudelConversion');
+    const sequencerPattern = strudelEventsToDrumPattern(events, bars, stepsPerBar);
+    if (sequencerPattern.rows.length === 0) return null;
+
+    const newTrack = createTrackFromTemplate(
+      get().project!.tracks,
+      'percussion',
+      'sequencer',
+      { sequencerPattern },
+    );
+    newTrack.displayName = `${track.displayName} (Drums)`;
+    newTrack.color = track.color;
+
+    const bpm = state.project.bpm ?? 120;
+    const singleBarMidi = sequencerPatternToMidiData(sequencerPattern, beatsPerBar);
+    if (singleBarMidi.notes.length > 0) {
+      const patternBeats = bars * beatsPerBar;
+      const projectMeasures = state.project.measures ?? 8;
+      const loopCount = Math.max(1, Math.ceil(projectMeasures / bars));
+      const totalBeats = patternBeats * loopCount;
+      const totalDurationSec = (totalBeats * 60) / bpm;
+
+      const allNotes = [];
+      for (let loop = 0; loop < loopCount; loop++) {
+        const offset = loop * patternBeats;
+        for (const note of singleBarMidi.notes) {
+          allNotes.push({
+            ...note,
+            id: `${note.id}-L${loop}`,
+            startBeat: note.startBeat + offset,
+          });
+        }
+      }
+
+      newTrack.clips = [{
+        id: uuidv4(),
+        trackId: newTrack.id,
+        startTime: 0,
+        duration: totalDurationSec,
+        prompt: '',
+        lyrics: '',
+        generationStatus: 'ready' as const,
+        generationJobId: null,
+        cumulativeMixKey: null,
+        isolatedAudioKey: null,
+        waveformPeaks: null,
+        midiData: { notes: allNotes, grid: singleBarMidi.grid },
+      }];
+    }
 
     const newTracks = [...get().project!.tracks, newTrack];
     const nextProject = ensureProjectSession({
