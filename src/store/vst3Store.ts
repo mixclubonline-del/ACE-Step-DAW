@@ -9,6 +9,8 @@ import type {
 } from '../types/vst3';
 import { toastSuccess, toastError } from '../hooks/useToast';
 import { _getBridgeClient } from '../hooks/useVST3Connection';
+import { VST3PluginAdapter } from '../services/vst3bridge/VST3PluginAdapter';
+import { pluginEngine } from '../engine/PluginEngine';
 
 export interface VST3Store {
   /* ── Connection ──────────────────────────────────────── */
@@ -141,6 +143,36 @@ export const useVST3Store = create<VST3Store>()((set, get) => ({
         activePreset: null,
       });
 
+      // Create the audio adapter and register with the plugin engine
+      // so audio routing (effects) and MIDI (instruments) work through the graph
+      try {
+        const { getContext } = await import('tone');
+        const ctx = getContext().rawContext as AudioContext;
+        const adapter = new VST3PluginAdapter(
+          instanceId,
+          { ...pluginInfo, uid: pluginInfo.id },
+          {
+            instanceId,
+            parameters: parameters.map((p) => ({
+              id: p.id,
+              name: p.name,
+              title: p.name,
+              default: p.defaultValue,
+              defaultValue: p.defaultValue,
+              min: p.minValue,
+              max: p.maxValue,
+              stepCount: 0,
+              unit: '',
+            })),
+            latencySamples: 0,
+          },
+          client,
+        );
+        pluginEngine.addPlugin(trackId, instanceId, adapter, ctx);
+      } catch {
+        // Audio engine not ready — adapter will be created on next rebuild
+      }
+
       toastSuccess(`Loaded ${pluginInfo.name}`);
     } catch (err) {
       toastError(`Failed to load ${pluginInfo.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -163,8 +195,8 @@ export const useVST3Store = create<VST3Store>()((set, get) => ({
     });
   },
 
-  openEditor: (_instanceId: string) => {
-    // Bridge tells companion to show native window
+  openEditor: (instanceId: string) => {
+    _getBridgeClient().send({ type: 'openEditor', instanceId });
   },
 
   setParameter: (instanceId: string, paramId: number, value: number) => {
