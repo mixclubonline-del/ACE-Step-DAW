@@ -1063,7 +1063,8 @@ export type AutomatableEffectTarget =
 
 export type AutomationParameter =
   | { type: 'mixer'; param: 'volume' | 'pan' }
-  | ({ type: 'effect'; effectId: string } & AutomatableEffectTarget);
+  | ({ type: 'effect'; effectId: string } & AutomatableEffectTarget)
+  | { type: 'send'; sendIndex: number; param: 'amount' };
 
 export interface AutomationLane {
   id: string;
@@ -1081,6 +1082,9 @@ export function automationParamEquals(a: AutomationParameter, b: AutomationParam
   }
   if (a.type === 'effect' && b.type === 'effect') {
     return a.effectId === b.effectId && a.effectType === b.effectType && a.param === b.param;
+  }
+  if (a.type === 'send' && b.type === 'send') {
+    return a.sendIndex === b.sendIndex && a.param === b.param;
   }
   return false;
 }
