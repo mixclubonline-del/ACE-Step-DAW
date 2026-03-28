@@ -12,6 +12,7 @@ import { GridOverlay } from './GridOverlay';
 import { snapToGrid } from '../../utils/time';
 import { RegionRegenerateModal } from '../generation/RegionRegenerateModal';
 import { CanvasContextMenu } from './CanvasContextMenu';
+import { ClipContextMenuFallback } from './ClipContextMenuFallback';
 import { InlineSuggestionBadge } from './InlineSuggestionBadge';
 import { useAudioImport } from '../../hooks/useAudioImport';
 import { clientXToLaneX } from '../../utils/timelineCoords';
@@ -73,7 +74,7 @@ export function Timeline() {
   const trackAreaRef = useRef<HTMLDivElement>(null);
 
   const [regionCtxMenu, setRegionCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const [canvasCtxMenu, setCanvasCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [canvasCtxMenu, setCanvasCtxMenu] = useState<{ x: number; y: number; clipId?: string } | null>(null);
   const [dragOverTrackId, setDragOverTrackId] = useState<string | null>(null);
   const [dragOverEmptySlotIndex, setDragOverEmptySlotIndex] = useState<number | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after'>('before');
@@ -348,6 +349,22 @@ export function Timeline() {
           if (target.closest?.('[data-track-column-region="true"]')) return;
           if (target.closest?.('[data-clip-block]')) return;
           if (target.closest?.('[data-sequencer-grid]')) return;
+          // Fallback: find clip at click position by bounding rect check.
+          // On macOS, two-finger trackpad press may fire contextmenu with e.target
+          // being the lane instead of the clip, so we search all clip blocks.
+          const allClipBlocks = (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-clip-block]');
+          for (const clipBlock of allClipBlocks) {
+            const rect = clipBlock.getBoundingClientRect();
+            if (e.clientX >= rect.left && e.clientX <= rect.right &&
+                e.clientY >= rect.top && e.clientY <= rect.bottom) {
+              const clipId = clipBlock.getAttribute('data-clip-id');
+              if (clipId) {
+                e.preventDefault();
+                setCanvasCtxMenu({ x: e.clientX, y: e.clientY, clipId });
+                return;
+              }
+            }
+          }
           if (selectWindow) {
             const selEl = target.closest?.('[style]');
             if (selEl && (selEl as HTMLElement).style.borderLeft?.includes('175, 82, 222')) return;
@@ -591,13 +608,22 @@ export function Timeline() {
       {/* Region regeneration modal */}
       {regionRegenerateTarget && <RegionRegenerateModal />}
 
-      {/* Canvas context menu */}
+      {/* Canvas context menu — or clip context menu when macOS trackpad fallback detected a clip */}
       {canvasCtxMenu && (
-        <CanvasContextMenu
-          x={canvasCtxMenu.x}
-          y={canvasCtxMenu.y}
-          onClose={() => setCanvasCtxMenu(null)}
-        />
+        canvasCtxMenu.clipId ? (
+          <ClipContextMenuFallback
+            x={canvasCtxMenu.x}
+            y={canvasCtxMenu.y}
+            clipId={canvasCtxMenu.clipId}
+            onClose={() => setCanvasCtxMenu(null)}
+          />
+        ) : (
+          <CanvasContextMenu
+            x={canvasCtxMenu.x}
+            y={canvasCtxMenu.y}
+            onClose={() => setCanvasCtxMenu(null)}
+          />
+        )
       )}
     </>
   );
