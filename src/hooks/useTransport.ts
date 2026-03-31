@@ -10,6 +10,7 @@ import { subtractiveEngine } from '../engine/SubtractiveEngine';
 import { createSamplerConfig, samplerEngine } from '../engine/SamplerEngine';
 import { drumEngine } from '../engine/DrumEngine';
 import { wavetableEngine } from '../engine/WavetableEngine';
+import { modulationEngine } from '../engine/ModulationEngine';
 import { automationEngine } from '../engine/AutomationEngine';
 import {
   stopAllStrudelTracks,
@@ -383,6 +384,7 @@ export function useTransport() {
         synthEngine.removeFmSynth(track.id);
         subtractiveEngine.removeTrackSynth(track.id);
         wavetableEngine.removeTrackSynth(track.id);
+        modulationEngine.removeTrack(track.id);
         samplerEngine.removeTrackSampler(track.id);
 
         if (useSampler && samplerConfig) {
@@ -402,6 +404,13 @@ export function useTransport() {
             track.instrument.settings,
             trackNode.inputGain as unknown as Tone.InputNode,
           );
+          // Apply modulation matrix if configured
+          if (track.instrument.settings.modulation?.slots.length) {
+            const modTargets = subtractiveEngine.getModulationTargets(track.id);
+            if (modTargets) {
+              modulationEngine.applyModulation(track.id, track.instrument.settings.modulation, modTargets);
+            }
+          }
         } else if (!vst3Instrument && track.instrument?.kind === 'fm') {
           const trackNode = engine.getOrCreateTrackNode(track.id);
           synthEngine.ensureFmSynth(
@@ -683,6 +692,7 @@ export function useTransport() {
     subtractiveEngine.releaseAll();
     wavetableEngine.releaseAll();
     samplerEngine.stopAll();
+    modulationEngine.releaseAll();
     automationEngine.stop();
     useTransportStore.getState().pause();
     // Only update currentTime, not playStartTime — the anchor stays put
@@ -702,6 +712,7 @@ export function useTransport() {
     subtractiveEngine.releaseAll();
     wavetableEngine.releaseAll();
     samplerEngine.stopAll();
+    modulationEngine.releaseAll();
     automationEngine.stop();
     stopAllStrudelTracks();
     useTransportStore.getState().stop();
@@ -717,6 +728,7 @@ export function useTransport() {
       subtractiveEngine.releaseAll();
       wavetableEngine.releaseAll();
       samplerEngine.stopAll();
+      modulationEngine.releaseAll();
       useTransportStore.getState().seek(time);
       play(time);
     } else {
@@ -738,7 +750,10 @@ export function useTransport() {
     if (resumePlayback) {
       engine.stop();
       synthEngine.releaseAll();
+      subtractiveEngine.releaseAll();
+      wavetableEngine.releaseAll();
       samplerEngine.stopAll();
+      modulationEngine.releaseAll();
       automationEngine.stop();
       useTransportStore.getState().pause();
     }
