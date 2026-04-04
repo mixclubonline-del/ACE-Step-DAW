@@ -223,7 +223,7 @@ export function SynthPresetBrowser({
           <div className="p-2 border-b border-[#333]">
             <input
               type="text"
-              placeholder="Search presets... (Tab for arrow keys)"
+              placeholder="Search presets..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -263,7 +263,7 @@ export function SynthPresetBrowser({
             className="max-h-[300px] overflow-y-auto"
             ref={listRef}
             onKeyDown={handleListKeyDown}
-            tabIndex={-1}
+            tabIndex={0}
           >
             {filteredPresets === null ? (
               /* Category list */

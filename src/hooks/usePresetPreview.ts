@@ -25,7 +25,7 @@ export function usePresetPreview(options: UsePresetPreviewOptions = {}) {
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(previewEngine.volume);
-  const activePresetRef = useRef<string | null>(null);
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
   const getProjectSettings = useCallback(() => {
     const project = useProjectStore.getState().project;
@@ -36,13 +36,15 @@ export function usePresetPreview(options: UsePresetPreviewOptions = {}) {
   }, []);
 
   const play = useCallback((presetId: string, info: PresetPreviewInfo) => {
-    activePresetRef.current = presetId;
+    // Clear any pending hover timer to prevent race with click
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setActivePresetId(presetId);
     setIsPlaying(true);
     const { bpm, keyScale } = getProjectSettings();
-    previewEngine.playPresetPreview(info.instrumentKind, info.category, bpm, keyScale).then(() => {
-      // Check if we're still supposed to be playing this preset
-      // (another preview may have started since)
-    });
+    previewEngine.playPresetPreview(info.instrumentKind, info.category, bpm, keyScale);
   }, [getProjectSettings]);
 
   const stop = useCallback(() => {
@@ -50,7 +52,7 @@ export function usePresetPreview(options: UsePresetPreviewOptions = {}) {
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
-    activePresetRef.current = null;
+    setActivePresetId(null);
     previewEngine.stop();
     setIsPlaying(false);
   }, []);
@@ -73,24 +75,26 @@ export function usePresetPreview(options: UsePresetPreviewOptions = {}) {
   }, [stop]);
 
   const handlePresetClick = useCallback((presetId: string, info: PresetPreviewInfo) => {
-    if (activePresetRef.current === presetId && isPlaying) {
+    if (activePresetId === presetId && isPlaying) {
       stop();
     } else {
       play(presetId, info);
     }
-  }, [isPlaying, play, stop]);
+  }, [isPlaying, activePresetId, play, stop]);
 
   const changeVolume = useCallback((vol: number) => {
     previewEngine.setVolume(vol);
     setVolume(previewEngine.volume);
   }, []);
 
-  // Sync isPlaying state with engine
+  // Sync isPlaying state with engine — only poll when playing
   useEffect(() => {
+    if (!isPlaying) return;
+
     const interval = setInterval(() => {
-      if (isPlaying && !previewEngine.isPlaying) {
+      if (!previewEngine.isPlaying) {
         setIsPlaying(false);
-        activePresetRef.current = null;
+        setActivePresetId(null);
       }
     }, 200);
     return () => clearInterval(interval);
@@ -108,7 +112,7 @@ export function usePresetPreview(options: UsePresetPreviewOptions = {}) {
 
   return useMemo(() => ({
     isPlaying,
-    activePresetId: activePresetRef.current,
+    activePresetId,
     volume,
     play,
     stop,
@@ -116,5 +120,5 @@ export function usePresetPreview(options: UsePresetPreviewOptions = {}) {
     handlePresetHoverStart,
     handlePresetHoverEnd,
     handlePresetClick,
-  }), [isPlaying, volume, play, stop, changeVolume, handlePresetHoverStart, handlePresetHoverEnd, handlePresetClick]);
+  }), [isPlaying, activePresetId, volume, play, stop, changeVolume, handlePresetHoverStart, handlePresetHoverEnd, handlePresetClick]);
 }

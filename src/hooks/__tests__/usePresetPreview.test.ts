@@ -53,6 +53,10 @@ describe('usePresetPreview', () => {
     vi.useFakeTimers();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('initializes with default values', () => {
     const { result } = renderHook(() => usePresetPreview());
     expect(result.current.isPlaying).toBe(false);

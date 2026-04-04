@@ -252,9 +252,9 @@ export class PreviewEngine {
       this._stopTimeoutId = null;
     }
 
-    // Cancel scheduled events
+    // Cancel scheduled note timeouts
     for (const id of this._scheduledIds) {
-      Tone.getTransport?.()?.clear?.(id);
+      clearTimeout(id);
     }
     this._scheduledIds = [];
 
@@ -290,7 +290,6 @@ export class PreviewEngine {
     this._isPlaying = true;
 
     // Schedule all notes with setTimeout (doesn't interfere with Transport)
-    const now = Tone.now();
     let maxEndTime = 0;
 
     for (const note of pattern.notes) {
