@@ -73,7 +73,10 @@ import type {
   FmInstrumentSettings,
   WavetableSettings,
   VelocityLayer,
+  VideoClipData,
+  VideoTrackSettings,
 } from '../types/project';
+import { DEFAULT_VIDEO_TRACK_SETTINGS } from '../types/project';
 import type { PluginInstance, PluginParamValue } from '../types/plugin';
 import { pluginRegistry } from '../engine/PluginRegistry';
 import { automationParamEquals } from '../types/project';
@@ -94,6 +97,7 @@ import {
   DEFAULT_TIME_SIGNATURE,
   DEFAULT_MEASURES,
   MAX_PROJECT_TRACKS,
+  MAX_VIDEO_TRACKS,
   DEFAULT_PROJECT_NAME,
   DEFAULT_GENERATION,
 } from '../constants/defaults';
@@ -639,6 +643,10 @@ export interface ProjectState extends MidiSliceActions {
   bounceTrackToAudio: (trackId: string) => Promise<Clip | undefined>;
 
   addTrack: (trackName: TrackName | TrackType, trackType?: TrackType, options?: { order?: number; color?: string; displayName?: string }) => Track;
+  /** Add a video track (max 1 per project). Returns undefined if limit reached. */
+  addVideoTrack: () => Track | undefined;
+  /** Add a video clip with metadata to a video track. */
+  addVideoClip: (trackId: string, clipData: { startTime: number; duration: number; videoMeta: import('../types/project').VideoClipData }) => Clip | undefined;
   removeTrack: (trackId: string) => void;
   removeTracks: (trackIds: string[]) => void;
   duplicateTrack: (trackId: string) => Track | undefined;
@@ -2852,6 +2860,58 @@ export const useProjectStore = create<ProjectState>()(
     return track;
   },
 
+  addVideoTrack: () => {
+    const state = get();
+    if (_isViewerMode()) return undefined;
+    if (!state.project) return undefined;
+
+    // Enforce MAX_VIDEO_TRACKS limit
+    const existingVideoTracks = state.project.tracks.filter(t => t.trackType === 'video');
+    if (existingVideoTracks.length >= MAX_VIDEO_TRACKS) {
+      toastError(`Video track limit reached (${MAX_VIDEO_TRACKS} max)`);
+      return undefined;
+    }
+
+    const track = get().addTrack('custom', 'video', { displayName: 'Video' });
+    if (!track) return undefined;
+
+    // Set default video settings on the track
+    const project = get().project;
+    if (project) {
+      const updatedTracks = project.tracks.map(t =>
+        t.id === track.id ? { ...t, videoSettings: { ...DEFAULT_VIDEO_TRACK_SETTINGS } } : t,
+      );
+      set({
+        project: {
+          ...project,
+          updatedAt: Date.now(),
+          tracks: updatedTracks,
+        },
+      });
+    }
+
+    return get().project?.tracks.find(t => t.id === track.id);
+  },
+
+  addVideoClip: (trackId, clipData) => {
+    const state = get();
+    if (_isViewerMode()) return undefined;
+    if (!state.project) return undefined;
+
+    const track = state.project.tracks.find(t => t.id === trackId);
+    if (!track || track.trackType !== 'video') return undefined;
+
+    const clip = get().addClip(trackId, {
+      startTime: clipData.startTime,
+      duration: clipData.duration,
+      prompt: '',
+      lyrics: '',
+      videoMeta: clipData.videoMeta,
+    } as Omit<Clip, 'id' | 'trackId' | 'generationStatus' | 'generationJobId' | 'cumulativeMixKey' | 'isolatedAudioKey' | 'waveformPeaks'>);
+
+    return clip;
+  },
+
   saveTrackPreset: (trackId, presetName) => {
     const state = get();
     if (!state.project) throw new Error('No project');
@@ -3859,6 +3919,7 @@ export const useProjectStore = create<ProjectState>()(
       source: clipData.source,
       starred: clipData.starred,
       midiData: clipData.midiData,
+      videoMeta: clipData.videoMeta,
     };
 
     const newTracks = state.project.tracks.map((t) =>
