@@ -105,11 +105,17 @@ function ifft(real: Float32Array, imag: Float32Array): void {
  * @param fftSize    STFT window size
  * @returns          Pitch-shifted output
  */
+/** Coerce to nearest power of 2 */
+function coercePow2(n: number): number {
+  return 2 ** Math.round(Math.log2(Math.max(256, n)));
+}
+
 export function phaseVocoderPitchShift(
   input: Float32Array,
   semitones: number,
   fftSize: number = 4096,
 ): Float32Array {
+  fftSize = coercePow2(fftSize);
   if (Math.abs(semitones) < 0.01) return new Float32Array(input);
   if (input.length < fftSize) return new Float32Array(input);
 
@@ -245,6 +251,7 @@ export function psolaPitchShift(
   const medianPeriod = periods.sort((a, b) => a - b)[Math.floor(periods.length / 2)];
   const windowSize = Math.round(medianPeriod * 2);
   const window = hannWindow(windowSize);
+  const windowSum = new Float32Array(output.length);
 
   // Place analysis marks at pitch period intervals
   const analysisMarks: number[] = [];
@@ -278,6 +285,7 @@ export function psolaPitchShift(
       const outIdx = Math.round(synthPos) + i;
       if (srcIdx < input.length && outIdx >= 0 && outIdx < output.length) {
         output[outIdx] += input[srcIdx] * window[i];
+        windowSum[outIdx] += window[i] * window[i];
       }
     }
 
@@ -285,14 +293,21 @@ export function psolaPitchShift(
     markIdx++;
   }
 
+  // Normalize by window sum
+  for (let i = 0; i < output.length; i++) {
+    if (windowSum[i] > 1e-6) output[i] /= windowSum[i];
+  }
+
   return output;
 }
 
-/** Simple linear resampling for unvoiced content */
+/** Simple linear resampling for unvoiced content (clamped to input bounds) */
 function simpleResample(input: Float32Array, ratio: number): Float32Array {
   const output = new Float32Array(input.length);
+  if (input.length === 0) return output;
+  const lastIndex = input.length - 1;
   for (let i = 0; i < output.length; i++) {
-    const srcPos = i * ratio;
+    const srcPos = Math.min(i * ratio, lastIndex);
     const idx = Math.floor(srcPos);
     const frac = srcPos - idx;
     if (idx + 1 < input.length) {
@@ -377,7 +392,7 @@ export function analyzePitchCorrection(
         startTime: frame.time,
         duration: 0.01,
         originalPitch: originalMidi,
-        correctedPitch: targetMidi,
+        correctedPitch: originalMidi + shiftAmount,
         shiftSemitones: shiftAmount,
       };
     }
@@ -406,9 +421,6 @@ export function applyAutoTune(
 
   const output = new Float32Array(input);
 
-  // Apply retune speed as smoothing on the correction amount
-  const smoothingFrames = Math.max(1, Math.round(options.retuneSpeed / 10));
-
   for (const event of events) {
     if (Math.abs(event.shiftSemitones) < 0.01) continue;
 
@@ -430,14 +442,15 @@ export function applyAutoTune(
       options.fftSize ?? 2048,
     );
 
-    // Crossfade with smoothing for retune speed
-    const fadeLen = Math.min(smoothingFrames * 48, segmentLen / 4);
+    // Crossfade with smoothing for retune speed.
+    // shiftSemitones is already scaled by amount, so use blend=1 with edge fades.
+    const fadeLen = Math.min(Math.round(options.retuneSpeed * sampleRate / 1000), segmentLen / 4);
     for (let i = 0; i < correctedSegment.length && startSample + i < output.length; i++) {
-      let blend = options.amount;
+      let blend = 1;
       // Fade in
-      if (i < fadeLen) blend *= i / fadeLen;
+      if (fadeLen > 0 && i < fadeLen) blend *= i / fadeLen;
       // Fade out
-      if (i > correctedSegment.length - fadeLen) {
+      if (fadeLen > 0 && i > correctedSegment.length - fadeLen) {
         blend *= (correctedSegment.length - i) / fadeLen;
       }
       output[startSample + i] = input[startSample + i] * (1 - blend) + correctedSegment[i] * blend;
@@ -461,6 +474,7 @@ export function formantPreservingPitchShift(
   semitones: number,
   fftSize: number = 4096,
 ): Float32Array {
+  fftSize = coercePow2(fftSize);
   if (Math.abs(semitones) < 0.01) return new Float32Array(input);
   if (input.length < fftSize) return new Float32Array(input);
 
