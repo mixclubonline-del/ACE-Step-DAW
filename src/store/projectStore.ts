@@ -8630,6 +8630,13 @@ export const useProjectStore = create<ProjectState>()(
       t.id === trackId ? { ...t, clips: [...t.clips, clip] } : t,
     );
 
+    // Auto-assign captured clip to session slot so it appears in the session grid
+    const session = autoAssignClipToSession(
+      ensureProjectSession(state.project).session!,
+      trackId,
+      clip.id,
+    );
+
     set({
       project: {
         ...state.project,
@@ -8644,6 +8651,7 @@ export const useProjectStore = create<ProjectState>()(
           state.project.timeSignatureMap,
         ),
         tracks: newTracks,
+        session,
       },
     });
 
