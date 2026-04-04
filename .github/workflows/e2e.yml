@@ -53,8 +53,10 @@ jobs:
       - name: Run extended E2E tests
         id: e2e
         run: |
+          set -o pipefail
           npx playwright test --grep-invert '@critical' 2>&1 | tee /tmp/e2e-output.txt
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
       - name: Upload extended test report
