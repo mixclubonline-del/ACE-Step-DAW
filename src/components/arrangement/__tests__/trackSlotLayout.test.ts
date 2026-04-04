@@ -5,6 +5,7 @@ import {
   getArrangementEmptyTrackId,
   MIN_ARRANGEMENT_VISIBLE_ROW_COUNT,
 } from '../trackSlotLayout';
+import { MAX_PROJECT_TRACKS } from '../../../constants/defaults';
 
 function createTrack(id: string, displayName: string, order: number): Track {
   return {
@@ -66,10 +67,10 @@ describe('trackSlotLayout', () => {
     expect(slots[2]).toEqual({ kind: 'empty', slotIndex: 2 });
   });
 
-  it('never creates more than MAX_PROJECT_TRACKS slots', () => {
+  it('clamps explicit placeholderCount to MAX_PROJECT_TRACKS', () => {
     const slots = buildArrangementTrackSlots([], 200);
 
-    // Even with explicit count > 128, should cap
-    expect(slots.length).toBeLessThanOrEqual(200);
+    // Even with explicit count > 128, should cap at MAX_PROJECT_TRACKS
+    expect(slots).toHaveLength(MAX_PROJECT_TRACKS);
   });
 });

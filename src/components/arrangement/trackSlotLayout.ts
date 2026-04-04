@@ -65,7 +65,10 @@ export function buildArrangementTrackSlots(
   tracks: Track[],
   placeholderCount?: number,
 ): ArrangementTrackSlot[] {
-  const effectiveCount = placeholderCount ?? getArrangementVisibleRowCount(tracks);
+  const effectiveCount = Math.min(
+    MAX_PROJECT_TRACKS,
+    placeholderCount ?? getArrangementVisibleRowCount(tracks),
+  );
   const sortedTracks = [...tracks].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
   const slots: ArrangementTrackSlot[] = [];
   let nextSlotNumber = 1;
