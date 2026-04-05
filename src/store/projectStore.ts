@@ -124,7 +124,8 @@ import { encodeMidiFile as encodeMultiTrackMidiFile, type MidiExportTrack } from
 import { clampClipFadeDurations } from '../utils/clipFade';
 import { getSynthPresetById } from '../data/synthPresets';
 import { getPresetById, type InstrumentPreset } from '../data/instrumentPresets';
-import { detectClipGroups, resolveFollowAction, rollFollowAction, resolveSceneFollowAction } from '../utils/followActions';
+import { detectClipGroups, resolveFollowAction, rollFollowAction } from '../utils/followActions';
+import { resolveFollowAction as resolveSceneFollowAction } from '../utils/followActionResolver';
 import { extractGroove, applyGroove, type ExtractGrooveOptions, type ApplyGrooveOptions } from '../utils/groovePool';
 import type { GrooveTemplate } from '../types/project';
 import { DEFAULT_MODULATION_SETTINGS } from '../types/project';
@@ -5432,6 +5433,7 @@ export const useProjectStore = create<ProjectState>()(
       }
       set({ project: nextProject });
       // Schedule scene follow action (e.g., auto-advance to next scene)
+      // Schedule scene follow action for immediate launch
       get().scheduleSceneFollowAction(sceneId, executeAt);
       return;
     }
@@ -5530,6 +5532,7 @@ export const useProjectStore = create<ProjectState>()(
       .sort((a, b) => a.executeAt - b.executeAt || a.requestedAt - b.requestedAt);
     if (ready.length === 0) return;
 
+    const launchedSceneIds: Array<{ sceneId: string; executeAt: number }> = [];
     let nextProject: Project = {
       ...ensureProjectSession(state.project),
       session: {
@@ -5568,6 +5571,8 @@ export const useProjectStore = create<ProjectState>()(
           };
         }
         sceneLaunchesForFollowAction.push({ sceneId: launch.sceneId, executeAt: launch.executeAt });
+        // Track launched scene for follow action scheduling
+        launchedSceneIds.push({ sceneId: launch.sceneId, executeAt: launch.executeAt });
         continue;
       }
       if (launch.type === 'stop-track' && launch.trackId) {
@@ -5686,47 +5691,6 @@ export const useProjectStore = create<ProjectState>()(
         session: nextSession,
       },
     });
-  },
-
-  scheduleSceneFollowAction: (sceneId, launchTime) => {
-    const state = get();
-    if (!state.project) return;
-    const session = ensureProjectSession(state.project).session!;
-
-    // Check global toggle (default true)
-    if (session.followActionsEnabled === false) return;
-
-    const currentScene = session.scenes.find((s) => s.id === sceneId);
-    if (!currentScene?.followAction || currentScene.followAction === 'none') return;
-
-    const targetScene = resolveSceneFollowAction(
-      currentScene.followAction,
-      currentScene,
-      session.scenes,
-    );
-
-    // Calculate fire time using scene followActionTime (in bars, default 1)
-    const bars = currentScene.followActionTime ?? 1;
-    const beatsPerBar = state.project.timeSignature ?? 4;
-    const beatDuration = 60 / Math.max(1, state.project.bpm);
-    const executeAt = launchTime + bars * beatsPerBar * beatDuration;
-
-    if (targetScene) {
-      // Queue a scene launch at the calculated time
-      const nextSession = queuePendingSessionLaunch(session, {
-        type: 'scene-follow-action',
-        sceneId: targetScene.id,
-        executeAt,
-      });
-      set({ project: { ...state.project, session: nextSession } });
-    } else {
-      // 'stop' or no valid target — queue stop-all
-      const nextSession = queuePendingSessionLaunch(session, {
-        type: 'stop-all',
-        executeAt,
-      });
-      set({ project: { ...state.project, session: nextSession } });
-    }
   },
 
   startSessionArrangementRecording: (startTime) => {
@@ -6029,6 +5993,66 @@ export const useProjectStore = create<ProjectState>()(
         },
       },
     });
+  },
+
+  scheduleSceneFollowAction: (sceneId, launchTime) => {
+    const state = get();
+    if (!state.project) return;
+    const session = ensureProjectSession(state.project).session!;
+
+    // Check global toggle (default true)
+    if (session.followActionsEnabled === false) return;
+
+    const scene = session.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+
+    // Determine the follow action to use
+    let targetSceneIndex: number | null = null;
+
+    if (scene.followActionConfig) {
+      // Dual A/B with probability
+      targetSceneIndex = resolveSceneFollowAction(scene, session.scenes);
+    } else if (scene.followAction && scene.followAction !== 'none') {
+      // Legacy single follow action — construct a temp scene with followAction for the resolver
+      targetSceneIndex = resolveSceneFollowAction(scene, session.scenes);
+    } else {
+      return; // No follow action configured
+    }
+
+    if (targetSceneIndex === null) return;
+
+    // Calculate execute time: launchTime + followActionTime bars
+    const bars = scene.followActionTime ?? 4;
+    const beatDuration = 60 / Math.max(1, state.project.bpm);
+    const beatsPerBar = state.project.timeSignature ?? 4;
+    const executeAt = launchTime + bars * beatsPerBar * beatDuration;
+
+    if (targetSceneIndex === -1) {
+      // Stop all
+      set({
+        project: {
+          ...state.project,
+          session: queuePendingSessionLaunch(session, {
+            type: 'stop-all',
+            executeAt,
+          }),
+        },
+      });
+    } else {
+      // Launch target scene
+      const targetScene = session.scenes[targetSceneIndex];
+      if (!targetScene) return;
+      set({
+        project: {
+          ...state.project,
+          session: queuePendingSessionLaunch(session, {
+            type: 'scene',
+            sceneId: targetScene.id,
+            executeAt,
+          }),
+        },
+      });
+    }
   },
 
   removeAsset: (assetId) => {
