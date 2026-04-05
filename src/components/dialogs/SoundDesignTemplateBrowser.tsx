@@ -24,6 +24,7 @@ export function SoundDesignTemplateBrowser({ onSelect }: Props) {
         <button
           type="button"
           data-testid="genre-filter-btn"
+          aria-pressed={selectedGenre === null}
           onClick={() => setSelectedGenre(null)}
           className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
             selectedGenre === null
@@ -38,6 +39,7 @@ export function SoundDesignTemplateBrowser({ onSelect }: Props) {
             key={genre}
             type="button"
             data-testid="genre-filter-btn"
+            aria-pressed={selectedGenre === genre}
             onClick={() => setSelectedGenre(genre)}
             className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
               selectedGenre === genre

@@ -154,7 +154,7 @@ export function NewProjectDialog() {
   };
 
   const handleSoundDesignTemplate = (template: SoundDesignTemplate) => {
-    const projectTemplate = toProjectTemplate(template, { bpm, keyScale });
+    const projectTemplate = toProjectTemplate(template, { bpm, keyScale, timeSignature });
     createProjectFromTemplate(projectTemplate, name !== DEFAULT_PROJECT_NAME ? name : undefined);
     // Set the globalCaption from the template's generation defaults
     useProjectStore.getState().updateProject({ globalCaption: template.generationDefaults.globalCaption });

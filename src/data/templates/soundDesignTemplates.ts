@@ -2,15 +2,15 @@
  * Sound Design Template Library — genre-specific preset collections.
  *
  * Each template defines a set of pre-configured tracks with instrument settings,
- * effect chains, AI generation prompt suggestions, and sonic roles — giving users
- * a genre-appropriate starting point instead of a blank canvas.
+ * AI generation prompt suggestions, and sonic roles — giving users a
+ * genre-appropriate starting point instead of a blank canvas.
  *
  * Part of #1229 (Sound Design & Timbre System epic).
  */
 
-import type { TrackName, TrackType, TrackEffect, InstrumentKind, ProjectTemplate, ProjectTemplateTrack, GenerationDefaults } from '../../types/project';
+import type { TrackName, TrackType, InstrumentKind, ProjectTemplate, ProjectTemplateTrack } from '../../types/project';
 import { getPresetById } from '../instrumentPresets';
-import { DEFAULT_GENERATION } from '../../constants/defaults';
+import { DEFAULT_GENERATION, DEFAULT_MEASURES } from '../../constants/defaults';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,8 +33,6 @@ export interface TrackTemplate {
   instrumentKind?: InstrumentKind;
   /** Factory preset ID to apply (from instrumentPresets). */
   presetId?: string;
-  /** Initial effects to add. */
-  effects?: Partial<TrackEffect>[];
   /** Initial volume (0–1). */
   volume?: number;
   /** Initial pan (-1 to +1). */
@@ -440,6 +438,7 @@ export const SOUND_DESIGN_TEMPLATES: readonly SoundDesignTemplate[] = [
         color: '#06b6d4',
         stemDescription: 'evolving granular pad with long reverb tail, shimmering ambient texture',
         instrumentKind: 'wavetable',
+        presetId: 'wt-vocal-formants',
         volume: 0.6,
       },
       {
@@ -706,7 +705,7 @@ export function getAllTemplateGenres(): string[] {
  */
 export function toProjectTemplate(
   template: SoundDesignTemplate,
-  options?: { bpm?: number; keyScale?: string },
+  options?: { bpm?: number; keyScale?: string; timeSignature?: number },
 ): ProjectTemplate {
   const tracks: ProjectTemplateTrack[] = template.tracks.map((tt) => {
     const preset = tt.presetId ? getPresetById(tt.presetId) : undefined;
@@ -729,8 +728,8 @@ export function toProjectTemplate(
     createdAt: Date.now(),
     bpm: options?.bpm ?? 120,
     keyScale: options?.keyScale ?? 'C major',
-    timeSignature: 4,
-    measures: 16,
+    timeSignature: options?.timeSignature ?? 4,
+    measures: DEFAULT_MEASURES,
     tracks,
     generationDefaults: { ...DEFAULT_GENERATION },
   };
