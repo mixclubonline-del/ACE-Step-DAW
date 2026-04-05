@@ -848,7 +848,7 @@ export function AddLayerPanel() {
               Stem Description
             </label>
           </div>
-          <TimbrePresetPicker onSelect={(prompt) => setStyle(prompt)} />
+          <TimbrePresetPicker onSelect={(preset) => setStyle(preset.promptTemplate)} />
           <textarea
             value={style}
             onChange={(e) => setStyle(e.target.value)}

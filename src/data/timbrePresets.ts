@@ -383,9 +383,20 @@ export function createUserTimbrePreset(input: {
   referenceAudioKey?: string;
   coverStrength?: number;
 }): TimbrePreset {
+  const coverStrength =
+    input.coverStrength === undefined
+      ? undefined
+      : Math.min(1, Math.max(0, input.coverStrength));
+
   return {
     id: `user-timbre-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     isFactory: false,
-    ...input,
+    name: input.name,
+    category: input.category,
+    promptTemplate: input.promptTemplate,
+    tags: [...input.tags],
+    description: input.description,
+    referenceAudioKey: input.referenceAudioKey,
+    coverStrength,
   };
 }

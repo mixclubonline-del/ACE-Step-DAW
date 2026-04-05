@@ -3,10 +3,11 @@ import {
   FACTORY_TIMBRE_PRESETS,
   getAllTimbreCategories,
   type TimbreCategory,
+  type TimbrePreset,
 } from '../../data/timbrePresets';
 
 interface Props {
-  onSelect: (promptTemplate: string) => void;
+  onSelect: (preset: TimbrePreset) => void;
 }
 
 export function TimbrePresetPicker({ onSelect }: Props) {
@@ -18,8 +19,8 @@ export function TimbrePresetPicker({ onSelect }: Props) {
     ? FACTORY_TIMBRE_PRESETS.filter((p) => p.category === selectedCategory)
     : FACTORY_TIMBRE_PRESETS;
 
-  const handleSelect = (promptTemplate: string) => {
-    onSelect(promptTemplate);
+  const handleSelect = (preset: TimbrePreset) => {
+    onSelect(preset);
     setExpanded(false);
   };
 
@@ -75,7 +76,7 @@ export function TimbrePresetPicker({ onSelect }: Props) {
                 key={preset.id}
                 type="button"
                 data-testid="timbre-preset-item"
-                onClick={() => handleSelect(preset.promptTemplate)}
+                onClick={() => handleSelect(preset)}
                 className="w-full text-left px-2 py-1 rounded hover:bg-[#2a2a2e] transition-colors group"
                 title={preset.description}
               >

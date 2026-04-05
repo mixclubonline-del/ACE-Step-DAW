@@ -303,7 +303,7 @@ export function MultiTrackGenerateSection({ mode, onModeChange, onFooterChange }
               </span>
             )}
           </div>
-          <TimbrePresetPicker onSelect={(template) => setGlobalCaption(template)} />
+          <TimbrePresetPicker onSelect={(preset) => setGlobalCaption(preset.promptTemplate)} />
           <textarea
             value={globalCaption}
             onChange={(e) => setGlobalCaption(e.target.value)}

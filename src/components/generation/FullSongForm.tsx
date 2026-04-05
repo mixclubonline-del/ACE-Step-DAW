@@ -290,7 +290,7 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
         <label className="block text-[11px] font-medium uppercase text-zinc-400">
           Music Caption
         </label>
-        <TimbrePresetPicker onSelect={(template) => setPrompt(template)} />
+        <TimbrePresetPicker onSelect={(preset) => setPrompt(preset.promptTemplate)} />
         <div className="relative">
           <PromptAutocompleteTextarea
             value={prompt}

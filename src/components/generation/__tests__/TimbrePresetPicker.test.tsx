@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TimbrePresetPicker } from '../TimbrePresetPicker';
-import { FACTORY_TIMBRE_PRESETS, TIMBRE_CATEGORIES } from '../../../data/timbrePresets';
+import { FACTORY_TIMBRE_PRESETS } from '../../../data/timbrePresets';
 
 describe('TimbrePresetPicker', () => {
   const onSelect = vi.fn();
@@ -13,7 +13,6 @@ describe('TimbrePresetPicker', () => {
   it('renders with collapsed state initially', () => {
     render(<TimbrePresetPicker onSelect={onSelect} />);
     expect(screen.getByTestId('timbre-preset-toggle')).toBeTruthy();
-    // Presets should not be visible initially
     expect(screen.queryAllByTestId('timbre-preset-item').length).toBe(0);
   });
 
@@ -27,33 +26,31 @@ describe('TimbrePresetPicker', () => {
     render(<TimbrePresetPicker onSelect={onSelect} />);
     fireEvent.click(screen.getByTestId('timbre-preset-toggle'));
     const tabs = screen.getAllByTestId('timbre-category-tab');
-    // "All" + categories
     expect(tabs.length).toBeGreaterThanOrEqual(2);
   });
 
   it('filters presets by category', () => {
     render(<TimbrePresetPicker onSelect={onSelect} />);
     fireEvent.click(screen.getByTestId('timbre-preset-toggle'));
-    // Click the first category tab (not "All")
     const tabs = screen.getAllByTestId('timbre-category-tab');
     const firstCat = tabs.find((t) => t.textContent !== 'All');
-    if (firstCat) {
-      fireEvent.click(firstCat);
-      const items = screen.getAllByTestId('timbre-preset-item');
-      expect(items.length).toBeGreaterThanOrEqual(1);
-      expect(items.length).toBeLessThan(FACTORY_TIMBRE_PRESETS.length);
-    }
+    expect(firstCat).toBeDefined();
+    fireEvent.click(firstCat!);
+    const items = screen.getAllByTestId('timbre-preset-item');
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    expect(items.length).toBeLessThan(FACTORY_TIMBRE_PRESETS.length);
   });
 
-  it('calls onSelect with preset promptTemplate when a preset is clicked', () => {
+  it('calls onSelect with full TimbrePreset when a preset is clicked', () => {
     render(<TimbrePresetPicker onSelect={onSelect} />);
     fireEvent.click(screen.getByTestId('timbre-preset-toggle'));
     const first = screen.getAllByTestId('timbre-preset-item')[0];
     fireEvent.click(first);
     expect(onSelect).toHaveBeenCalledTimes(1);
     const calledWith = onSelect.mock.calls[0][0];
-    expect(typeof calledWith).toBe('string');
-    expect(calledWith.length).toBeGreaterThan(10);
+    expect(calledWith).toHaveProperty('id');
+    expect(calledWith).toHaveProperty('promptTemplate');
+    expect(calledWith.promptTemplate.length).toBeGreaterThan(10);
   });
 
   it('collapses after selecting a preset', () => {
@@ -61,7 +58,6 @@ describe('TimbrePresetPicker', () => {
     fireEvent.click(screen.getByTestId('timbre-preset-toggle'));
     const first = screen.getAllByTestId('timbre-preset-item')[0];
     fireEvent.click(first);
-    // Should be collapsed after selection
     expect(screen.queryAllByTestId('timbre-preset-item').length).toBe(0);
   });
 });
