@@ -119,7 +119,7 @@ import { encodeMidiFile as encodeMultiTrackMidiFile, type MidiExportTrack } from
 import { clampClipFadeDurations } from '../utils/clipFade';
 import { getSynthPresetById } from '../data/synthPresets';
 import { getPresetById, type InstrumentPreset } from '../data/instrumentPresets';
-import { detectClipGroups, resolveFollowAction, rollFollowAction } from '../utils/followActions';
+import { detectClipGroups, resolveFollowAction, rollFollowAction, resolveSceneFollowAction } from '../utils/followActions';
 import { extractGroove, applyGroove, type ExtractGrooveOptions, type ApplyGrooveOptions } from '../utils/groovePool';
 import type { GrooveTemplate } from '../types/project';
 import { DEFAULT_MODULATION_SETTINGS } from '../types/project';
@@ -771,12 +771,15 @@ export interface ProjectState extends MidiSliceActions {
   setSessionSlotFollowAction: (slotId: string, config: Partial<import('../types/project').FollowActionConfig>) => void;
   setSessionFollowActionsEnabled: (enabled: boolean) => void;
   scheduleFollowAction: (trackId: string, currentSlotId: string, launchTime: number) => void;
+  scheduleSceneFollowAction: (sceneId: string, launchTime: number) => void;
   startSessionArrangementRecording: (startTime?: number) => void;
   stopSessionArrangementRecording: (endTime?: number) => Clip[];
   moveSessionSlotClip: (sourceSlotId: string, targetSlotId: string) => void;
   reorderSessionScenes: (fromIndex: number, toIndex: number) => void;
   updateSessionSceneProperties: (sceneId: string, properties: Partial<Pick<SessionScene, 'name' | 'color' | 'tempo' | 'timeSignature' | 'followAction' | 'followActionTime'>>) => void;
   setSessionSceneFollowAction: (sceneId: string, action: SceneFollowActionType, bars?: number) => void;
+  /** Create a clip in an empty session slot, using context from adjacent clips. Returns the clip or null. */
+  aiFillSessionSlot: (slotId: string) => Clip | null;
 
   removeAsset: (assetId: string) => void;
   toggleAssetStar: (assetId: string) => void;
@@ -5345,7 +5348,20 @@ export const useProjectStore = create<ProjectState>()(
       for (const slot of session.slots.filter((candidate) => candidate.sceneId === sceneId && !candidate.clipId && candidate.hasStopButton !== false)) {
         nextProject = applySessionTrackLaunch(nextProject, slot.trackId, null, executeAt, 'stop');
       }
+      // Apply scene tempo/timeSig overrides (using launchedScene from outer scope)
+      if (launchedScene?.tempo) {
+        nextProject = { ...nextProject, bpm: launchedScene.tempo };
+      }
+      if (launchedScene?.timeSignature) {
+        nextProject = {
+          ...nextProject,
+          timeSignature: launchedScene.timeSignature[0],
+          timeSignatureDenominator: launchedScene.timeSignature[1],
+        };
+      }
       set({ project: nextProject });
+      // Schedule scene follow action (e.g., auto-advance to next scene)
+      get().scheduleSceneFollowAction(sceneId, executeAt);
       return;
     }
 
@@ -5451,12 +5467,15 @@ export const useProjectStore = create<ProjectState>()(
       },
     };
 
+    // Collect scene launches that need follow action scheduling
+    const sceneLaunchesForFollowAction: Array<{ sceneId: string; executeAt: number }> = [];
+
     for (const launch of ready) {
       if (launch.type === 'clip' && launch.trackId) {
         nextProject = applySessionTrackLaunch(nextProject, launch.trackId, launch.clipId ?? null, launch.executeAt, 'clip', launch.sceneId ?? null);
         continue;
       }
-      if (launch.type === 'scene' && launch.sceneId) {
+      if ((launch.type === 'scene' || launch.type === 'scene-follow-action') && launch.sceneId) {
         const nextSession = ensureProjectSession(nextProject).session!;
         for (const slot of nextSession.slots.filter((candidate) => candidate.sceneId === launch.sceneId && candidate.clipId)) {
           nextProject = applySessionTrackLaunch(nextProject, slot.trackId, slot.clipId ?? null, launch.executeAt, 'scene', launch.sceneId);
@@ -5465,6 +5484,19 @@ export const useProjectStore = create<ProjectState>()(
         for (const slot of nextSession.slots.filter((candidate) => candidate.sceneId === launch.sceneId && !candidate.clipId && candidate.hasStopButton !== false)) {
           nextProject = applySessionTrackLaunch(nextProject, slot.trackId, null, launch.executeAt, 'stop');
         }
+        // Apply scene tempo/timeSig overrides
+        const launchedScene = nextSession.scenes.find((s) => s.id === launch.sceneId);
+        if (launchedScene?.tempo) {
+          nextProject = { ...nextProject, bpm: launchedScene.tempo };
+        }
+        if (launchedScene?.timeSignature) {
+          nextProject = {
+            ...nextProject,
+            timeSignature: launchedScene.timeSignature[0],
+            timeSignatureDenominator: launchedScene.timeSignature[1],
+          };
+        }
+        sceneLaunchesForFollowAction.push({ sceneId: launch.sceneId, executeAt: launch.executeAt });
         continue;
       }
       if (launch.type === 'stop-track' && launch.trackId) {
@@ -5488,6 +5520,11 @@ export const useProjectStore = create<ProjectState>()(
     }
 
     set({ project: nextProject });
+
+    // Schedule scene follow actions after state is updated
+    for (const { sceneId, executeAt } of sceneLaunchesForFollowAction) {
+      get().scheduleSceneFollowAction(sceneId, executeAt);
+    }
   },
 
   setSessionSlotFollowAction: (slotId, config) => {
@@ -5578,6 +5615,47 @@ export const useProjectStore = create<ProjectState>()(
         session: nextSession,
       },
     });
+  },
+
+  scheduleSceneFollowAction: (sceneId, launchTime) => {
+    const state = get();
+    if (!state.project) return;
+    const session = ensureProjectSession(state.project).session!;
+
+    // Check global toggle (default true)
+    if (session.followActionsEnabled === false) return;
+
+    const currentScene = session.scenes.find((s) => s.id === sceneId);
+    if (!currentScene?.followAction || currentScene.followAction === 'none') return;
+
+    const targetScene = resolveSceneFollowAction(
+      currentScene.followAction,
+      currentScene,
+      session.scenes,
+    );
+
+    // Calculate fire time using scene followActionTime (in bars, default 1)
+    const bars = currentScene.followActionTime ?? 1;
+    const beatsPerBar = state.project.timeSignature ?? 4;
+    const beatDuration = 60 / Math.max(1, state.project.bpm);
+    const executeAt = launchTime + bars * beatsPerBar * beatDuration;
+
+    if (targetScene) {
+      // Queue a scene launch at the calculated time
+      const nextSession = queuePendingSessionLaunch(session, {
+        type: 'scene-follow-action',
+        sceneId: targetScene.id,
+        executeAt,
+      });
+      set({ project: { ...state.project, session: nextSession } });
+    } else {
+      // 'stop' or no valid target — queue stop-all
+      const nextSession = queuePendingSessionLaunch(session, {
+        type: 'stop-all',
+        executeAt,
+      });
+      set({ project: { ...state.project, session: nextSession } });
+    }
   },
 
   startSessionArrangementRecording: (startTime) => {
@@ -5764,6 +5842,85 @@ export const useProjectStore = create<ProjectState>()(
         },
       },
     });
+  },
+
+  aiFillSessionSlot: (slotId) => {
+    const state = get();
+    if (!state.project) return null;
+    const session = ensureProjectSession(state.project).session!;
+
+    const slot = session.slots.find((s) => s.id === slotId);
+    if (!slot || slot.clipId) return null; // Only fill empty slots
+
+    const track = state.project.tracks.find((t) => t.id === slot.trackId);
+    if (!track) return null;
+
+    // Gather context from adjacent clips in the same track
+    const sceneIndex = session.scenes.findIndex((s) => s.id === slot.sceneId);
+    const trackSlots = session.slots
+      .filter((s) => s.trackId === slot.trackId && s.clipId)
+      .map((s) => ({
+        ...s,
+        sceneIdx: session.scenes.findIndex((sc) => sc.id === s.sceneId),
+      }))
+      .sort((a, b) => a.sceneIdx - b.sceneIdx);
+
+    // Find the nearest clips for context
+    let contextPrompt = '';
+    let contextCaption = state.project.globalCaption ?? '';
+    const adjacentClips = trackSlots
+      .map((s) => ({ slot: s, clip: track.clips.find((c) => c.id === s.clipId), distance: Math.abs(s.sceneIdx - sceneIndex) }))
+      .filter((x) => x.clip)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 3);
+
+    if (adjacentClips.length > 0) {
+      const prompts = adjacentClips.map((x) => x.clip!.prompt).filter(Boolean);
+      contextPrompt = prompts.length > 0
+        ? `Continue from: ${prompts.join('; ')}`
+        : `${track.displayName} fill`;
+      if (!contextCaption && adjacentClips[0].clip!.globalCaption) {
+        contextCaption = adjacentClips[0].clip!.globalCaption;
+      }
+    } else {
+      contextPrompt = `${track.displayName} fill`;
+    }
+
+    // Calculate duration — use a sensible clip length (4 bars), not full project measures
+    const beatsPerBar = state.project.timeSignature ?? 4;
+    const clipBars = 4; // Standard session clip length
+    const beatDuration = 60 / Math.max(1, state.project.bpm);
+    const duration = clipBars * beatsPerBar * beatDuration;
+
+    // Create clip on the track
+    const clip = get().addClip(slot.trackId, {
+      startTime: sceneIndex * duration,
+      duration,
+      prompt: contextPrompt,
+      globalCaption: contextCaption,
+      lyrics: '',
+      source: 'generated',
+    });
+
+    // Ensure the clip is assigned to the correct slot (not just auto-assigned)
+    const updatedSession = get().project!.session!;
+    const updatedSlot = updatedSession.slots.find((s) => s.id === slotId);
+    if (updatedSlot && updatedSlot.clipId !== clip.id) {
+      // Auto-assign may have placed it elsewhere; fix it
+      const nextSlots = updatedSession.slots.map((s) => {
+        if (s.id === slotId) return { ...s, clipId: clip.id };
+        if (s.clipId === clip.id && s.id !== slotId) return { ...s, clipId: null };
+        return s;
+      });
+      set({
+        project: {
+          ...get().project!,
+          session: { ...updatedSession, slots: nextSlots },
+        },
+      });
+    }
+
+    return clip;
   },
 
   removeAsset: (assetId) => {

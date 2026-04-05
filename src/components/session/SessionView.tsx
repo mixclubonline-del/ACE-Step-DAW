@@ -10,6 +10,7 @@ import { useSessionDragDrop, type SessionDragState, type SessionDropTarget } fro
 import { ContextMenuWrapper, ContextMenuSeparator, ContextMenuItem } from '../ui/ContextMenu';
 import { ColorSwatchPalette } from '../ui/ColorSwatchPalette';
 import { SessionMixer } from './SessionMixer';
+import { useMidiController } from '../../hooks/useMidiController';
 import type { Clip, Track, SessionLaunchQuantization, SessionLaunchMode, SessionClipSlot, SessionPendingLaunch, SessionScene, SceneFollowActionType, FollowActionType, FollowActionConfig } from '../../types/project';
 
 const LAUNCH_MODE_OPTIONS: SessionLaunchMode[] = ['trigger', 'gate', 'toggle', 'repeat'];
@@ -125,6 +126,7 @@ export function SessionView() {
   const updateSessionSceneProperties = useProjectStore((s) => s.updateSessionSceneProperties);
   const setSessionSceneFollowAction = useProjectStore((s) => s.setSessionSceneFollowAction);
   const launchSessionSceneProject = useProjectStore((s) => s.launchSessionScene);
+  const aiFillSessionSlot = useProjectStore((s) => s.aiFillSessionSlot);
   const [colorMenu, setColorMenu] = useState<SlotContextMenuState | null>(null);
   const [sceneMenu, setSceneMenu] = useState<SceneContextMenuState | null>(null);
   const { dragState, dropTarget, handlePointerDown, handlePointerMove, handlePointerUp, cancelDrag } = useSessionDragDrop();
@@ -142,6 +144,41 @@ export function SessionView() {
     const targetTrackId = armedTrackIds[0];
     captureMidi(targetTrackId, currentTime, captureService, { bars: captureBarCount, quantize: '1/16' });
   }, [hasArmedTrack, armedTrackIds, currentTime, captureMidi, captureService, captureBarCount]);
+
+  const [midiEnabled, setMidiEnabled] = useState(false);
+
+  const storeLaunchClip = useProjectStore((s) => s.launchSessionClip);
+  const storeLaunchScene = useProjectStore((s) => s.launchSessionScene);
+  const storeStopAll = useProjectStore((s) => s.stopAllSessionClips);
+
+  // MIDI controller mapping — route MIDI note-on to session actions
+  const handleMidiClipLaunch = useCallback((trackIndex: number, sceneIndex: number) => {
+    if (!project) return;
+    const sortedTracks = [...project.tracks].sort((a, b) => a.order - b.order);
+    const track = sortedTracks[trackIndex];
+    const session = project.session;
+    const scene = session?.scenes[sceneIndex];
+    if (!track || !scene) return;
+    storeLaunchClip(track.id, scene.id);
+  }, [project, storeLaunchClip]);
+
+  const handleMidiSceneLaunch = useCallback((sceneIndex: number) => {
+    if (!project?.session) return;
+    const scene = project.session.scenes[sceneIndex];
+    if (!scene) return;
+    storeLaunchScene(scene.id);
+  }, [project, storeLaunchScene]);
+
+  const handleMidiStopAll = useCallback(() => {
+    storeStopAll();
+  }, [storeStopAll]);
+
+  const { isConnected: midiConnected } = useMidiController({
+    enabled: midiEnabled,
+    onClipLaunch: handleMidiClipLaunch,
+    onSceneLaunch: handleMidiSceneLaunch,
+    onStopAll: handleMidiStopAll,
+  });
 
   const handleCloseColorMenu = useCallback(() => setColorMenu(null), []);
 
@@ -214,8 +251,14 @@ export function SessionView() {
   const followActionsEnabled = project.session?.followActionsEnabled !== false;
 
   return (
-    <div className="flex-1 min-w-0 bg-[radial-gradient(circle_at_top,#313131_0%,#202020_55%,#171717_100%)] border-l border-[#111] overflow-auto">
-      <div className="sticky top-0 z-20 border-b border-[#303030] bg-[#1c1c1c]/95 backdrop-blur-sm">
+    <div className={`flex-1 min-w-0 bg-[radial-gradient(circle_at_top,#313131_0%,#202020_55%,#171717_100%)] border-l border-[#111] overflow-auto${sessionArrangementRecording ? ' ring-2 ring-red-500/40 ring-inset' : ''}`}>
+      {sessionArrangementRecording && (
+        <div className="sticky top-0 z-30 flex items-center justify-center gap-2 bg-red-600/90 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm" role="status" aria-live="polite" data-testid="session-recording-indicator">
+          <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
+          Recording to Arrangement
+        </div>
+      )}
+      <div className="sticky top-0 z-20 border-b border-[#303030] bg-[#1c1c1c]/95 backdrop-blur-sm" style={sessionArrangementRecording ? { top: 28 } : undefined}>
         <div className="flex items-center justify-between px-4 py-3">
           <div>
             <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Performance Grid</div>
@@ -293,6 +336,20 @@ export function SessionView() {
               aria-label="Stop all Session clips"
             >
               Stop All
+            </button>
+            <button
+              onClick={() => setMidiEnabled((prev) => !prev)}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
+                midiEnabled
+                  ? midiConnected
+                    ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/50'
+                    : 'bg-amber-600/30 text-amber-300 border border-amber-500/50'
+                  : 'bg-[#2a2a2a] text-zinc-400 hover:bg-[#343434]'
+              }`}
+              aria-label={midiEnabled ? 'Disable MIDI controller input' : 'Enable MIDI controller input'}
+              data-testid="midi-controller-toggle"
+            >
+              {midiEnabled ? (midiConnected ? 'MIDI ●' : 'MIDI …') : 'MIDI'}
             </button>
             <button
               onClick={() => setMainView('arrangement')}
@@ -460,6 +517,8 @@ export function SessionView() {
               onSlotQuantizationChange={(slotId, q) => setSessionSlotQuantization(slotId, q)}
               onContextMenuSlot={setColorMenu}
               onSlotClick={(sceneIndex) => setSelectedSessionSlot({ trackId: track.id, sceneIndex })}
+              isRecording={sessionArrangementRecording}
+              onAiFill={aiFillSessionSlot}
               dragState={dragState}
               dropTarget={dropTarget}
               onDragStart={handlePointerDown}
@@ -768,6 +827,8 @@ function FragmentRow({
   currentTime,
   pendingLaunches,
   selectedSceneIndex,
+  isRecording,
+  onAiFill,
   onLaunch,
   onStop,
   onSlotQuantizationChange,
@@ -787,6 +848,8 @@ function FragmentRow({
   currentTime: number;
   pendingLaunches: SessionPendingLaunch[];
   selectedSceneIndex: number | null;
+  isRecording: boolean;
+  onAiFill: (slotId: string) => void;
   onLaunch: (clipId: string, sceneIndex: number) => void | Promise<void>;
   onStop: () => void | Promise<void>;
   onSlotQuantizationChange: (slotId: string, quantization: 'global' | SessionLaunchQuantization) => void;
@@ -1007,6 +1070,14 @@ function FragmentRow({
                     &#x2192;
                   </span>
                 )}
+                {isActive && isRecording && (
+                  <span
+                    className="absolute bottom-1 right-1 inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse pointer-events-none"
+                    title="Recording to arrangement"
+                    data-testid={`recording-indicator-${slot?.id}`}
+                    aria-label="Recording"
+                  />
+                )}
                 {hasOverride && (
                   <span
                     className="absolute top-1 right-1 rounded bg-daw-accent/80 px-1 py-0.5 text-[9px] font-semibold text-white leading-none pointer-events-none"
@@ -1078,6 +1149,14 @@ function FragmentRow({
 
       {contextMenu && (
         <ContextMenuWrapper x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)}>
+          <ContextMenuItem
+            label="AI Fill — Generate clip"
+            onClick={() => {
+              onAiFill(contextMenu.slotId);
+              setContextMenu(null);
+            }}
+          />
+          <ContextMenuSeparator />
           <ContextMenuItem
             label={contextMenu.hasStopButton ? 'Remove Stop Button' : 'Add Stop Button'}
             onClick={handleToggleStopButton}

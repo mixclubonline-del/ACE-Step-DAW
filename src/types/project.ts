@@ -1187,7 +1187,7 @@ export interface SessionClipSlot {
 
 export interface SessionPendingLaunch {
   id: string;
-  type: 'clip' | 'scene' | 'stop-track' | 'stop-all' | 'follow-action';
+  type: 'clip' | 'scene' | 'stop-track' | 'stop-all' | 'follow-action' | 'scene-follow-action';
   executeAt: number;
   requestedAt: number;
   trackId?: string;
