@@ -32,23 +32,20 @@ describe('limiterCurve', () => {
       expect(withGain[idx].outputDb).toBeGreaterThan(noGain[idx].outputDb);
     });
 
-    it('warm style has softer knee than aggressive', () => {
-      const warm = generateLimiterCurve(-1, 6, 'warm');
-      const aggressive = generateLimiterCurve(-1, 6, 'aggressive');
+    it('warm style has wider knee than aggressive', () => {
+      const warm = generateLimiterCurve(-1, 0, 'warm');
+      const aggressive = generateLimiterCurve(-1, 0, 'aggressive');
 
-      // Find a point above the threshold, inside the knee region
-      // threshold = ceiling = -1, so boosted > -1 means inputDb + 6 > -1
-      const aboveThreshold = warm.findIndex((p) => p.inputDb + 6 > -1);
-      expect(aboveThreshold).toBeGreaterThan(0);
-      expect(aboveThreshold).toBeLessThan(warm.length);
-
-      // Check a point slightly above threshold (inside warm's 4dB knee)
-      // Warm has wider knee (4dB) so it starts limiting more gently than aggressive (0.5dB knee)
-      const kneeIdx = Math.min(aboveThreshold + 2, warm.length - 2);
-      const wVal = warm[kneeIdx].outputDb;
-      const aVal = aggressive[kneeIdx].outputDb;
-      // Warm should output higher — its wider knee means less gain reduction at this point
-      expect(wVal).toBeGreaterThanOrEqual(aVal);
+      // Centered knee: warm = 9dB (halfKnee=4.5, starts at -5.5),
+      // aggressive = 3dB (halfKnee=1.5, starts at -2.5).
+      // At ceiling - 3dB = -4: aggressive is still passthrough, warm is already reducing.
+      const testDb = -4;
+      const wPt = warm.find((p) => Math.abs(p.inputDb - testDb) < 0.5);
+      const aPt = aggressive.find((p) => Math.abs(p.inputDb - testDb) < 0.5);
+      expect(wPt).toBeDefined();
+      expect(aPt).toBeDefined();
+      // Warm starts reducing earlier (wider knee), so its output is lower here
+      expect(wPt!.outputDb).toBeLessThan(aPt!.outputDb);
     });
 
     it('all styles limit to ceiling', () => {

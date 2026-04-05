@@ -71,7 +71,7 @@ describe('generateLimiterCurve', () => {
 
   it('x values span the specified range', () => {
     const points = generateLimiterCurve(-0.3, 0, 'transparent');
-    expect(points[0].x).toBeCloseTo(-60, 4);
-    expect(points[points.length - 1].x).toBeCloseTo(0, 4);
+    expect(points[0].inputDb).toBeCloseTo(-48, 4);
+    expect(points[points.length - 1].inputDb).toBeCloseTo(6, 4);
   });
 });
