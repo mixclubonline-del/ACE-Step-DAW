@@ -77,9 +77,14 @@ export function cutsToSceneRanges(
 }
 
 /**
- * Compute the pixel difference score between two grayscale image data arrays.
+ * Compute the pixel difference score between two RGBA ImageData buffers.
+ * Compares the R channel only (assumes grayscale-converted or near-grayscale input).
  * Used by the scene detection worker.
  *
+ * @param prev - RGBA pixel data (4 bytes per pixel) of the previous frame
+ * @param curr - RGBA pixel data (4 bytes per pixel) of the current frame
+ * @param width - Frame width in pixels
+ * @param height - Frame height in pixels
  * @returns Normalized score (0–1), where 1 = completely different frames.
  */
 export function computeFrameDiffScore(
@@ -91,15 +96,17 @@ export function computeFrameDiffScore(
   const pixelCount = width * height;
   if (pixelCount === 0) return 0;
 
+  const expectedLength = pixelCount * 4;
+  const comparedLength = Math.min(prev.length, curr.length, expectedLength);
+  if (comparedLength < 4) return 0;
+
   let totalDiff = 0;
-  // ImageData has 4 bytes per pixel (RGBA). We only use the R channel
-  // (grayscale assumption: R ≈ G ≈ B after conversion)
-  for (let i = 0; i < prev.length; i += 4) {
+  for (let i = 0; i < comparedLength; i += 4) {
     totalDiff += Math.abs(prev[i] - curr[i]);
   }
 
-  // Normalize: max possible diff per pixel is 255, so max total = 255 * pixelCount
-  return totalDiff / (255 * pixelCount);
+  const comparedPixelCount = comparedLength / 4;
+  return totalDiff / (255 * comparedPixelCount);
 }
 
 /**
