@@ -1,157 +1,182 @@
 /**
- * MIDI Controller Service for Session View
+ * Web MIDI controller service for session view clip/scene launching.
  *
- * Connects to Web MIDI API, listens for note-on messages, and routes them
- * to session clip/scene launch actions via a configurable mapping.
+ * Mapping convention (Launchpad-style):
+ * - MIDI notes 0–63: clip slot launches (row = note / 8, col = note % 8)
+ * - MIDI notes 64–71: scene launches (scene index = note - 64)
+ * - CC 1–8: track volume (not implemented yet)
  *
- * Mapping layout (Launchpad-style):
- *   MIDI notes are mapped to a grid: note = baseNote + (sceneIndex * columns) + trackIndex
- *   Scene launch notes start at sceneLaunchBaseNote + sceneIndex
+ * Custom mappings can override the defaults via setMapping().
  */
 
 export interface MidiMapping {
-  /** Base MIDI note for clip grid (default: 36 = C2). */
-  gridBaseNote: number;
-  /** Number of columns (tracks) in the grid mapping. */
-  gridColumns: number;
-  /** Base MIDI note for scene launch buttons (default: 82). */
-  sceneLaunchBaseNote: number;
-  /** MIDI note for stop-all (default: 120). */
-  stopAllNote: number;
+  type: 'clip' | 'scene' | 'stop-track' | 'stop-all';
+  /** For clips: track index in the sorted track list. */
+  trackIndex?: number;
+  /** For clips: scene index. For scenes: scene index. */
+  sceneIndex?: number;
 }
 
-export const DEFAULT_MIDI_MAPPING: MidiMapping = {
-  gridBaseNote: 36,
-  gridColumns: 8,
-  sceneLaunchBaseNote: 82,
-  stopAllNote: 120,
-};
-
-export interface MidiControllerCallbacks {
-  onClipLaunch: (trackIndex: number, sceneIndex: number) => void;
-  onSceneLaunch: (sceneIndex: number) => void;
-  onStopAll: () => void;
+export interface MidiControllerState {
+  isAvailable: boolean;
+  isConnected: boolean;
+  deviceName: string | null;
+  inputId: string | null;
 }
 
-export interface MidiDevice {
-  id: string;
-  name: string;
-  manufacturer: string;
-}
+export type MidiEventHandler = (mapping: MidiMapping) => void;
+
+const DEFAULT_CLIP_NOTE_START = 0;
+const DEFAULT_SCENE_NOTE_START = 64;
+const DEFAULT_STOP_ALL_NOTE = 127;
+const GRID_COLS = 8;
+
+let midiAccess: MIDIAccess | null = null;
+let currentInput: MIDIInput | null = null;
+let eventHandler: MidiEventHandler | null = null;
+let customMappings: Map<number, MidiMapping> = new Map();
 
 /**
- * Resolve a MIDI note-on message to a session action using the mapping.
- * Returns the action to perform or null if unmapped.
+ * Resolve a MIDI note number to a mapping.
+ * Custom mappings take precedence over defaults.
  */
-export function resolveMidiNoteToAction(
-  note: number,
-  mapping: MidiMapping,
-): { type: 'clip'; trackIndex: number; sceneIndex: number } | { type: 'scene'; sceneIndex: number } | { type: 'stop-all' } | null {
-  // Stop-all takes highest priority
-  if (note === mapping.stopAllNote) {
+export function resolveNoteMapping(note: number): MidiMapping | null {
+  // Check custom mappings first
+  if (customMappings.has(note)) {
+    return customMappings.get(note)!;
+  }
+
+  // Default: stop all
+  if (note === DEFAULT_STOP_ALL_NOTE) {
     return { type: 'stop-all' };
   }
 
-  // Scene launch range (higher priority than clip grid when overlapping)
-  if (note >= mapping.sceneLaunchBaseNote && note < mapping.sceneLaunchBaseNote + 16) {
-    return { type: 'scene', sceneIndex: note - mapping.sceneLaunchBaseNote };
+  // Default: scene launches (notes 64-71)
+  if (note >= DEFAULT_SCENE_NOTE_START && note < DEFAULT_SCENE_NOTE_START + 8) {
+    return { type: 'scene', sceneIndex: note - DEFAULT_SCENE_NOTE_START };
   }
 
-  // Clip grid range (only notes NOT consumed by scene launch)
-  const gridOffset = note - mapping.gridBaseNote;
-  if (gridOffset >= 0 && gridOffset < mapping.gridColumns * 16) {
-    const sceneIndex = Math.floor(gridOffset / mapping.gridColumns);
-    const trackIndex = gridOffset % mapping.gridColumns;
-    return { type: 'clip', trackIndex, sceneIndex };
+  // Default: clip grid (notes 0-63)
+  if (note >= DEFAULT_CLIP_NOTE_START && note < DEFAULT_CLIP_NOTE_START + 64) {
+    const row = Math.floor(note / GRID_COLS);
+    const col = note % GRID_COLS;
+    return { type: 'clip', trackIndex: col, sceneIndex: row };
   }
 
   return null;
 }
 
+function handleMidiMessage(event: MIDIMessageEvent) {
+  if (!eventHandler) return;
+  const data = event.data;
+  if (!data || data.length < 3) return;
+
+  const status = data[0] & 0xf0;
+  const note = data[1];
+  const velocity = data[2];
+
+  // Only respond to Note On with velocity > 0
+  if (status === 0x90 && velocity > 0) {
+    const mapping = resolveNoteMapping(note);
+    if (mapping) {
+      eventHandler(mapping);
+    }
+  }
+}
+
+function connectToInput(input: MIDIInput) {
+  if (currentInput) {
+    currentInput.onmidimessage = null;
+  }
+  currentInput = input;
+  currentInput.onmidimessage = handleMidiMessage;
+}
+
 /**
- * List available MIDI input devices.
- * Returns empty array if Web MIDI is not supported.
+ * Initialize the Web MIDI service. Returns the current state.
  */
-export async function listMidiInputDevices(): Promise<MidiDevice[]> {
-  if (!navigator.requestMIDIAccess) return [];
+export async function initMidiController(): Promise<MidiControllerState> {
+  if (!navigator.requestMIDIAccess) {
+    return { isAvailable: false, isConnected: false, deviceName: null, inputId: null };
+  }
+
   try {
-    const access = await navigator.requestMIDIAccess();
-    const devices: MidiDevice[] = [];
-    access.inputs.forEach((input) => {
-      devices.push({
-        id: input.id,
-        name: input.name ?? 'Unknown MIDI Device',
-        manufacturer: input.manufacturer ?? '',
-      });
-    });
-    return devices;
+    midiAccess = await navigator.requestMIDIAccess();
+    const inputs = Array.from(midiAccess.inputs.values());
+
+    if (inputs.length > 0) {
+      connectToInput(inputs[0]);
+      return {
+        isAvailable: true,
+        isConnected: true,
+        deviceName: inputs[0].name ?? 'Unknown Device',
+        inputId: inputs[0].id,
+      };
+    }
+
+    // Listen for new device connections
+    midiAccess.onstatechange = (event) => {
+      if (event.port?.type === 'input' && event.port.state === 'connected' && !currentInput) {
+        connectToInput(event.port as MIDIInput);
+      }
+    };
+
+    return { isAvailable: true, isConnected: false, deviceName: null, inputId: null };
   } catch {
-    return [];
+    return { isAvailable: false, isConnected: false, deviceName: null, inputId: null };
   }
 }
 
 /**
- * Connect to a MIDI input device and route note-on messages to session actions.
- * Returns a cleanup function to disconnect.
+ * Select a specific MIDI input by ID.
  */
-export function connectMidiController(
-  deviceId: string | null,
-  mapping: MidiMapping,
-  callbacks: MidiControllerCallbacks,
-): { disconnect: () => void; connected: Promise<boolean> } {
-  let cleanup: (() => void) | null = null;
+export function selectMidiInput(inputId: string): boolean {
+  if (!midiAccess) return false;
+  const input = midiAccess.inputs.get(inputId);
+  if (!input) return false;
+  connectToInput(input);
+  return true;
+}
 
-  const connected = (async () => {
-    if (!navigator.requestMIDIAccess) return false;
-    try {
-      const access = await navigator.requestMIDIAccess();
+/**
+ * List available MIDI inputs.
+ */
+export function listMidiInputs(): Array<{ id: string; name: string }> {
+  if (!midiAccess) return [];
+  return Array.from(midiAccess.inputs.values()).map((input) => ({
+    id: input.id,
+    name: input.name ?? 'Unknown Device',
+  }));
+}
 
-      // If no specific device, use first available input
-      let input: MIDIInput | undefined;
-      if (deviceId) {
-        input = access.inputs.get(deviceId);
-      } else {
-        const entries = access.inputs.values();
-        const first = entries.next();
-        input = first.done ? undefined : first.value;
-      }
+/**
+ * Set the event handler for MIDI controller events.
+ */
+export function setMidiEventHandler(handler: MidiEventHandler | null) {
+  eventHandler = handler;
+}
 
-      if (!input) return false;
+/**
+ * Set a custom MIDI note mapping.
+ */
+export function setMapping(note: number, mapping: MidiMapping) {
+  customMappings.set(note, mapping);
+}
 
-      const handleMessage = (event: MIDIMessageEvent) => {
-        const [status, note, velocity] = event.data ?? [];
-        // Note-on: status 0x90-0x9F with velocity > 0
-        if ((status & 0xf0) !== 0x90 || velocity === 0) return;
+/**
+ * Clear all custom mappings, reverting to defaults.
+ */
+export function clearMappings() {
+  customMappings.clear();
+}
 
-        const action = resolveMidiNoteToAction(note, mapping);
-        if (!action) return;
-
-        switch (action.type) {
-          case 'clip':
-            callbacks.onClipLaunch(action.trackIndex, action.sceneIndex);
-            break;
-          case 'scene':
-            callbacks.onSceneLaunch(action.sceneIndex);
-            break;
-          case 'stop-all':
-            callbacks.onStopAll();
-            break;
-        }
-      };
-
-      input.addEventListener('midimessage', handleMessage as EventListener);
-      cleanup = () => {
-        input?.removeEventListener('midimessage', handleMessage as EventListener);
-      };
-
-      return true;
-    } catch {
-      return false;
-    }
-  })();
-
-  return {
-    disconnect: () => cleanup?.(),
-    connected,
-  };
+/**
+ * Disconnect and clean up.
+ */
+export function disconnectMidiController() {
+  if (currentInput) {
+    currentInput.onmidimessage = null;
+    currentInput = null;
+  }
+  eventHandler = null;
 }
