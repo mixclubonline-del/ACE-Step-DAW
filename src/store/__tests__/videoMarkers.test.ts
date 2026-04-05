@@ -12,12 +12,13 @@ describe('Video markers (Phase 7)', () => {
   });
 
   describe('addMarker with type', () => {
-    it('adds a marker with default type', () => {
+    it('adds a marker with default type generic', () => {
       useProjectStore.getState().addMarker(10, 'Scene 1');
       const markers = useProjectStore.getState().project!.markers!;
       expect(markers).toHaveLength(1);
       expect(markers[0].time).toBe(10);
       expect(markers[0].name).toBe('Scene 1');
+      expect(markers[0].type).toBe('generic');
     });
 
     it('markers are persisted in project', () => {

@@ -77,6 +77,7 @@ import type {
   VelocityLayer,
   VideoClipData,
   VideoTrackSettings,
+  MarkerType,
 } from '../types/project';
 import { DEFAULT_VIDEO_TRACK_SETTINGS } from '../types/project';
 import type { PluginInstance, PluginParamValue } from '../types/plugin';
@@ -931,7 +932,7 @@ export interface ProjectState extends MidiSliceActions {
   // Markers
   addMarker: (time: number, name: string) => void;
   /** Add a typed marker with automatic color assignment. */
-  addTypedMarker: (time: number, name: string, type: import('../types/project').MarkerType) => void;
+  addTypedMarker: (time: number, name: string, type: MarkerType) => void;
   /** Batch-add scene markers from detected cut timestamps. Single undo step. */
   addSceneMarkers: (cutTimes: number[]) => void;
   removeMarker: (id: string) => void;
@@ -8500,7 +8501,7 @@ export const useProjectStore = create<ProjectState>()(
     const state = get();
     if (!state.project) return;
     _pushHistory(state.project);
-    const marker: Marker = { id: uuidv4(), time, name, color: '#facc15' };
+    const marker: Marker = { id: uuidv4(), time, name, color: '#facc15', type: 'generic' };
     set({
       project: {
         ...state.project,
@@ -8514,7 +8515,7 @@ export const useProjectStore = create<ProjectState>()(
     const state = get();
     if (!state.project) return;
     _pushHistory(state.project);
-    const colorMap: Record<string, string> = {
+    const colorMap: Record<MarkerType, string> = {
       generic: '#ffffff',
       scene: '#3b82f6',
       cue: '#facc15',
@@ -8534,7 +8535,9 @@ export const useProjectStore = create<ProjectState>()(
     const state = get();
     if (!state.project || cutTimes.length === 0) return;
     _pushHistory(state.project);
-    const newMarkers: Marker[] = cutTimes.map((time, i) => ({
+    // Sort chronologically and de-duplicate
+    const sorted = [...new Set(cutTimes)].sort((a, b) => a - b);
+    const newMarkers: Marker[] = sorted.map((time, i) => ({
       id: uuidv4(),
       time,
       name: `Scene ${i + 1}`,
