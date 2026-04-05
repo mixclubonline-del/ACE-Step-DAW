@@ -192,6 +192,48 @@ describe('follow actions store', () => {
     });
   });
 
+  describe('scene tempo/timeSig overrides', () => {
+    it('applies scene tempo override when scene is launched immediately', () => {
+      addTrackWithClips(2);
+      const session = useProjectStore.getState().project!.session!;
+      const scene0 = session.scenes[0];
+
+      // Set scene tempo override
+      useProjectStore.getState().updateSessionSceneProperties(scene0.id, { tempo: 140 });
+
+      // Launch scene (transport not playing = immediate)
+      useProjectStore.getState().launchSessionScene(scene0.id);
+
+      expect(useProjectStore.getState().project!.bpm).toBe(140);
+    });
+
+    it('applies scene time signature override when scene is launched', () => {
+      addTrackWithClips(2);
+      const session = useProjectStore.getState().project!.session!;
+      const scene0 = session.scenes[0];
+
+      useProjectStore.getState().updateSessionSceneProperties(scene0.id, {
+        timeSignature: [3, 4],
+      });
+
+      useProjectStore.getState().launchSessionScene(scene0.id);
+
+      expect(useProjectStore.getState().project!.timeSignature).toBe(3);
+      expect(useProjectStore.getState().project!.timeSignatureDenominator).toBe(4);
+    });
+
+    it('does not change BPM when scene has no tempo override', () => {
+      addTrackWithClips(2);
+      const originalBpm = useProjectStore.getState().project!.bpm;
+      const session = useProjectStore.getState().project!.session!;
+      const scene0 = session.scenes[0];
+
+      useProjectStore.getState().launchSessionScene(scene0.id);
+
+      expect(useProjectStore.getState().project!.bpm).toBe(originalBpm);
+    });
+  });
+
   describe('scheduleSceneFollowAction', () => {
     it('queues a scene-follow-action pending launch when scene has follow action "next"', () => {
       addTrackWithClips(2);

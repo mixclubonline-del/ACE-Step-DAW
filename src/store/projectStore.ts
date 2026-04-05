@@ -5264,6 +5264,18 @@ export const useProjectStore = create<ProjectState>()(
       for (const slot of session.slots.filter((candidate) => candidate.sceneId === sceneId && !candidate.clipId && candidate.hasStopButton !== false)) {
         nextProject = applySessionTrackLaunch(nextProject, slot.trackId, null, executeAt, 'stop');
       }
+      // Apply scene tempo/timeSig overrides
+      const launchedScene = session.scenes.find((s) => s.id === sceneId);
+      if (launchedScene?.tempo) {
+        nextProject = { ...nextProject, bpm: launchedScene.tempo };
+      }
+      if (launchedScene?.timeSignature) {
+        nextProject = {
+          ...nextProject,
+          timeSignature: launchedScene.timeSignature[0],
+          timeSignatureDenominator: launchedScene.timeSignature[1],
+        };
+      }
       set({ project: nextProject });
       // Schedule scene follow action (e.g., auto-advance to next scene)
       get().scheduleSceneFollowAction(sceneId, executeAt);
@@ -5374,6 +5386,18 @@ export const useProjectStore = create<ProjectState>()(
         // Stop tracks whose empty slots have hasStopButton enabled (default true)
         for (const slot of nextSession.slots.filter((candidate) => candidate.sceneId === launch.sceneId && !candidate.clipId && candidate.hasStopButton !== false)) {
           nextProject = applySessionTrackLaunch(nextProject, slot.trackId, null, launch.executeAt, 'stop');
+        }
+        // Apply scene tempo/timeSig overrides
+        const launchedScene = nextSession.scenes.find((s) => s.id === launch.sceneId);
+        if (launchedScene?.tempo) {
+          nextProject = { ...nextProject, bpm: launchedScene.tempo };
+        }
+        if (launchedScene?.timeSignature) {
+          nextProject = {
+            ...nextProject,
+            timeSignature: launchedScene.timeSignature[0],
+            timeSignatureDenominator: launchedScene.timeSignature[1],
+          };
         }
         sceneLaunchesForFollowAction.push({ sceneId: launch.sceneId, executeAt: launch.executeAt });
         continue;
