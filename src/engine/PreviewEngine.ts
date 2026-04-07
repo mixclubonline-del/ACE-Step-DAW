@@ -202,7 +202,7 @@ function transposePattern(pattern: PreviewPattern, semitones: number): PreviewPa
 // Preview synth factory
 // ---------------------------------------------------------------------------
 
-function createPreviewSynth(kind: 'subtractive' | 'fm' | 'wavetable' | 'granular' | 'physical'): Tone.PolySynth | Tone.FMSynth | Tone.PluckSynth {
+function createPreviewSynth(kind: 'subtractive' | 'fm' | 'wavetable' | 'granular' | 'additive' | 'physical'): Tone.PolySynth | Tone.FMSynth | Tone.PluckSynth {
   if (kind === 'fm') {
     return new Tone.FMSynth({
       modulationIndex: 3,
@@ -276,7 +276,7 @@ export class PreviewEngine {
   }
 
   async playPresetPreview(
-    instrumentKind: 'subtractive' | 'fm' | 'wavetable' | 'granular' | 'physical',
+    instrumentKind: 'subtractive' | 'fm' | 'wavetable' | 'granular' | 'additive' | 'physical',
     category: string,
     bpm: number,
     keyScale = 'C major',

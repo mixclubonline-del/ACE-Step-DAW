@@ -198,7 +198,7 @@ export interface SampleZone {
 }
 
 export type LegacySynthVoicePreset = Exclude<SynthPreset, 'sampler'>;
-export type InstrumentKind = 'subtractive' | 'sampler' | 'fm' | 'wavetable' | 'granular' | 'physical';
+export type InstrumentKind = 'subtractive' | 'sampler' | 'fm' | 'wavetable' | 'granular' | 'additive' | 'physical';
 export type InstrumentWaveform = 'sine' | 'triangle' | 'square' | 'sawtooth';
 export type InstrumentLfoTarget = 'off' | 'pitch' | 'filterCutoff' | 'amp' | 'pan';
 
@@ -457,6 +457,27 @@ export interface GranularTrackInstrument {
   settings: GranularSettings;
 }
 
+export type AdditivePreset = 'saw' | 'square' | 'organ' | 'bell' | 'custom';
+
+export interface AdditivePartial {
+  ratio: number;      // frequency multiplier (1 = fundamental, 2 = 2nd harmonic, etc.)
+  amplitude: number;  // 0–1
+  phase: number;      // 0–2π
+}
+
+export interface AdditiveSettings {
+  partials: AdditivePartial[];
+  ampEnvelope: InstrumentEnvelope;
+  outputGain: number;
+}
+
+export interface AdditiveTrackInstrument {
+  kind: 'additive';
+  preset: AdditivePreset;
+  name: string;
+  settings: AdditiveSettings;
+}
+
 export type PhysicalExciterType = 'pluck' | 'bow' | 'hammer';
 export type PhysicalModelPreset = 'acoustic-guitar' | 'harp' | 'kalimba' | 'marimba' | 'steel-drum' | 'custom';
 
@@ -482,6 +503,7 @@ export type TrackInstrument =
   | FmTrackInstrument
   | WavetableTrackInstrument
   | GranularTrackInstrument
+  | AdditiveTrackInstrument
   | PhysicalTrackInstrument;
 
 export interface SamplerSettings {
