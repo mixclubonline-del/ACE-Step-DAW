@@ -30,6 +30,12 @@ interface ClipContextMenuProps {
   onSelectAll: () => void;
   onLoopSelection: () => void;
 
+  /* Audio processing */
+  onReverse?: () => void;
+  onNormalize?: () => void;
+  onGainUp?: () => void;
+  onGainDown?: () => void;
+
   /* Clip state */
   onToggleMute: () => void;
   isMuted: boolean;
@@ -61,6 +67,10 @@ export function ClipContextMenu({
   onDelete,
   onSelectAll,
   onLoopSelection,
+  onReverse,
+  onNormalize,
+  onGainUp,
+  onGainDown,
   onToggleMute,
   isMuted,
   onAssignColor,
@@ -112,6 +122,17 @@ export function ClipContextMenu({
       <ContextMenuSeparator />
       <ContextMenuItem label="Split" onClick={onSplitAtPlayhead} shortcut="⌘E" />
       <ContextMenuItem label="Consolidate" onClick={onConsolidate} shortcut="⌘J" disabled={!canConsolidate} />
+
+      {/* Audio processing */}
+      {(onReverse || onNormalize || onGainUp) && (
+        <>
+          <ContextMenuSeparator />
+          {onReverse && <ContextMenuItem label="Reverse" onClick={onReverse} />}
+          {onNormalize && <ContextMenuItem label="Normalize" onClick={onNormalize} />}
+          {onGainUp && <ContextMenuItem label="Gain +3 dB" onClick={onGainUp} />}
+          {onGainDown && <ContextMenuItem label="Gain −3 dB" onClick={onGainDown} />}
+        </>
+      )}
 
       {/* Delete */}
       <ContextMenuSeparator />

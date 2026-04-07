@@ -750,6 +750,13 @@ export interface ProjectState extends MidiSliceActions {
   /** Paste pre-built clips into their target tracks. Returns IDs of newly created clips. */
   pasteClipsToTracks: (clips: { clip: Clip; targetTrackId: string }[]) => string[];
 
+  /** Destructive audio processing: reverse clip audio. */
+  reverseClip: (clipId: string) => Promise<void>;
+  /** Destructive audio processing: normalize clip audio to peak. */
+  normalizeClip: (clipId: string) => Promise<void>;
+  /** Destructive audio processing: apply gain adjustment in dB. */
+  adjustClipGain: (clipId: string, gainDb: number) => Promise<void>;
+
   // Session View / clip launcher
   createSessionScene: (name?: string) => SessionScene | undefined;
   removeSessionScene: (sceneId: string) => void;
@@ -5022,6 +5029,54 @@ export const useProjectStore = create<ProjectState>()(
     });
 
     return newClipIds;
+  },
+
+  reverseClip: async (clipId) => {
+    const state = get();
+    if (_isViewerMode()) return;
+    const clip = state.getClipById(clipId);
+    if (!clip || !state.project) return;
+    const hasAudio = clip.isolatedAudioKey || clip.cumulativeMixKey;
+    if (!hasAudio || clip.generationStatus !== 'ready') return;
+    _pushHistory(state.project);
+    const { reverseClipAudio } = await import('../services/clipAudioProcessing');
+    const result = await reverseClipAudio(state.project.id, clip);
+    get().updateClip(clipId, {
+      isolatedAudioKey: result.audioKey,
+      waveformPeaks: result.waveformPeaks,
+    });
+  },
+
+  normalizeClip: async (clipId) => {
+    const state = get();
+    if (_isViewerMode()) return;
+    const clip = state.getClipById(clipId);
+    if (!clip || !state.project) return;
+    const hasAudio = clip.isolatedAudioKey || clip.cumulativeMixKey;
+    if (!hasAudio || clip.generationStatus !== 'ready') return;
+    _pushHistory(state.project);
+    const { normalizeClipAudio } = await import('../services/clipAudioProcessing');
+    const result = await normalizeClipAudio(state.project.id, clip);
+    get().updateClip(clipId, {
+      isolatedAudioKey: result.audioKey,
+      waveformPeaks: result.waveformPeaks,
+    });
+  },
+
+  adjustClipGain: async (clipId, gainDb) => {
+    const state = get();
+    if (_isViewerMode()) return;
+    const clip = state.getClipById(clipId);
+    if (!clip || !state.project) return;
+    const hasAudio = clip.isolatedAudioKey || clip.cumulativeMixKey;
+    if (!hasAudio || clip.generationStatus !== 'ready') return;
+    _pushHistory(state.project);
+    const { adjustClipGain: adjustGain } = await import('../services/clipAudioProcessing');
+    const result = await adjustGain(state.project.id, clip, gainDb);
+    get().updateClip(clipId, {
+      isolatedAudioKey: result.audioKey,
+      waveformPeaks: result.waveformPeaks,
+    });
   },
 
   createSessionScene: (name) => {

@@ -43,6 +43,9 @@ export function ClipContextMenuContainer({
   const removeClip = useProjectStore((s) => s.removeClip);
   const duplicateClip = useProjectStore((s) => s.duplicateClip);
   const consolidateClips = useProjectStore((s) => s.consolidateClips);
+  const reverseClip = useProjectStore((s) => s.reverseClip);
+  const normalizeClip = useProjectStore((s) => s.normalizeClip);
+  const adjustClipGainAction = useProjectStore((s) => s.adjustClipGain);
   const createQuickSamplerFromClip = useProjectStore((s) => s.createQuickSamplerFromClip);
   const applyAudioQuantize = useProjectStore((s) => s.applyAudioQuantize);
   const clearAudioQuantize = useProjectStore((s) => s.clearAudioQuantize);
@@ -135,6 +138,10 @@ export function ClipContextMenuContainer({
         }
       }}
       onConsolidate={() => { void handleConsolidate(); }}
+      onReverse={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); void reverseClip(clip.id); } : undefined}
+      onNormalize={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); void normalizeClip(clip.id); } : undefined}
+      onGainUp={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); void adjustClipGainAction(clip.id, 3); } : undefined}
+      onGainDown={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); void adjustClipGainAction(clip.id, -3); } : undefined}
       onDelete={() => { onClose(); removeClip(clip.id); }}
       onSelectAll={() => {
         onClose();
