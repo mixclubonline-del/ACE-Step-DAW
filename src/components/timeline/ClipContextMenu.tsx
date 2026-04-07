@@ -35,6 +35,9 @@ interface ClipContextMenuProps {
   onNormalize?: () => void;
   onGainUp?: () => void;
   onGainDown?: () => void;
+  onHalfSpeed?: () => void;
+  onDoubleSpeed?: () => void;
+  onResetSpeed?: () => void;
 
   /* Clip state */
   onToggleMute: () => void;
@@ -71,6 +74,9 @@ export function ClipContextMenu({
   onNormalize,
   onGainUp,
   onGainDown,
+  onHalfSpeed,
+  onDoubleSpeed,
+  onResetSpeed,
   onToggleMute,
   isMuted,
   onAssignColor,
@@ -131,6 +137,9 @@ export function ClipContextMenu({
           {onNormalize && <ContextMenuItem label="Normalize" onClick={onNormalize} />}
           {onGainUp && <ContextMenuItem label="Gain +3 dB" onClick={onGainUp} />}
           {onGainDown && <ContextMenuItem label="Gain −3 dB" onClick={onGainDown} />}
+          {onHalfSpeed && <ContextMenuItem label="Half Speed" onClick={onHalfSpeed} />}
+          {onDoubleSpeed && <ContextMenuItem label="Double Speed" onClick={onDoubleSpeed} />}
+          {onResetSpeed && <ContextMenuItem label="Reset Speed" onClick={onResetSpeed} />}
         </>
       )}
 

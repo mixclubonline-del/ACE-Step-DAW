@@ -46,6 +46,7 @@ export function ClipContextMenuContainer({
   const reverseClip = useProjectStore((s) => s.reverseClip);
   const normalizeClip = useProjectStore((s) => s.normalizeClip);
   const adjustClipGainAction = useProjectStore((s) => s.adjustClipGain);
+  const setClipTimeStretch = useProjectStore((s) => s.setClipTimeStretch);
   const createQuickSamplerFromClip = useProjectStore((s) => s.createQuickSamplerFromClip);
   const applyAudioQuantize = useProjectStore((s) => s.applyAudioQuantize);
   const clearAudioQuantize = useProjectStore((s) => s.clearAudioQuantize);
@@ -142,6 +143,9 @@ export function ClipContextMenuContainer({
       onNormalize={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); void normalizeClip(clip.id); } : undefined}
       onGainUp={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); void adjustClipGainAction(clip.id, 3); } : undefined}
       onGainDown={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); void adjustClipGainAction(clip.id, -3); } : undefined}
+      onHalfSpeed={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); setClipTimeStretch(clip.id, 0.5); } : undefined}
+      onDoubleSpeed={(!isMidiClip && hasAudio && isReady) ? () => { onClose(); setClipTimeStretch(clip.id, 2.0); } : undefined}
+      onResetSpeed={(!isMidiClip && hasAudio && isReady && clip.timeStretchRate !== undefined && clip.timeStretchRate !== 1) ? () => { onClose(); setClipTimeStretch(clip.id, 1.0); } : undefined}
       onDelete={() => { onClose(); removeClip(clip.id); }}
       onSelectAll={() => {
         onClose();
