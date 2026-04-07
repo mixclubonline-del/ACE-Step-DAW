@@ -11,6 +11,7 @@ import { ColorSwatchPalette } from '../ui/ColorSwatchPalette';
 import { SessionMixer } from './SessionMixer';
 import { gatherAiFillContext } from '../../utils/sessionAiFill';
 import { generateSingleClip } from '../../services/generationPipeline';
+import { toastError } from '../../hooks/useToast';
 import { useSessionMidiController } from '../../hooks/useSessionMidiController';
 import { getMidiCaptureService } from '../../services/midiCaptureService';
 import type { Clip, Track, SessionLaunchQuantization, SessionLaunchMode, SessionClipSlot, SessionPendingLaunch, SessionScene, SceneFollowActionType, SceneFollowActionConfig, FollowActionType, FollowActionConfig } from '../../types/project';
@@ -276,7 +277,7 @@ export function SessionView() {
 
     // Trigger AI generation for the newly created clip
     void generateSingleClip(newClip.id).catch((error) => {
-      console.error('Failed to generate AI-filled clip', { clipId: newClip.id, trackId, sceneId, error });
+      toastError(error instanceof Error ? error.message : 'Failed to generate AI-filled clip');
     });
   }, [project, tracks, scenes, sessionSlots, addClip, assignClipToSessionSlot]);
 
