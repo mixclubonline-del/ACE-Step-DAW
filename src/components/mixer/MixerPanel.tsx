@@ -8,6 +8,7 @@ import { MasteringPanel } from './MasteringPanel';
 import { SpectrumAnalyzer } from './SpectrumAnalyzer';
 import { VerticalFader } from './VerticalFader';
 import { SidechainRoutingOverlay } from './SidechainRoutingOverlay';
+import { MixSnapshotBar } from './MixSnapshotBar';
 import type { Track, ReturnTrack, TrackEffectType } from '../../types/project';
 
 const MIXER_MIN_VISIBLE_HEIGHT = 360;
@@ -582,6 +583,9 @@ export function MixerPanel() {
         className="flex items-center px-3 py-1 text-[10px] text-zinc-300 border-b border-[#333] bg-[#252525]"
       >
         <span className="flex-1">Scope: <span className="text-zinc-100">Mixer</span> · Channel: <span className="text-zinc-100">{focusedTrackName}</span></span>
+        <div className="relative">
+          <MixSnapshotBar />
+        </div>
         <button
           onClick={() => useUIStore.getState().setShowMixer(false)}
           aria-label="Close mixer"
