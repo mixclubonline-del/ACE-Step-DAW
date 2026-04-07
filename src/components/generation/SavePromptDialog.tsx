@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useGenerationStore } from '../../store/generationStore';
-import { useUIStore } from '../../store/uiStore';
 import { Button } from '../ui/Button';
 import { toastSuccess } from '../../hooks/useToast';
 
@@ -30,7 +29,6 @@ export function SavePromptDialog({
   initialMetadata = {},
 }: SavePromptDialogProps) {
   const saveToPromptLibrary = useGenerationStore((s) => s.saveToPromptLibrary);
-  const existingTags = useGenerationStore((s) => s.getPromptLibraryTags);
   const existingCategories = useGenerationStore((s) => s.getPromptLibraryCategories);
 
   const [title, setTitle] = useState('');
@@ -48,6 +46,16 @@ export function SavePromptDialog({
       setCategory('');
     }
   }, [open, initialPrompt, initialMetadata.styleTags]);
+
+  // Escape key to close
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, onClose]);
 
   const handleAddTag = useCallback((tag: string) => {
     const normalized = tag.trim().toLowerCase();
@@ -93,7 +101,6 @@ export function SavePromptDialog({
 
   if (!open) return null;
 
-  const allTags = existingTags();
   const allCategories = existingCategories();
   const suggestedTags = COMMON_TAGS.filter((t) => !tags.includes(t));
 
@@ -121,7 +128,7 @@ export function SavePromptDialog({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Auto-generated from prompt if empty"
-              className="w-full rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-500"
+              className="w-full rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-indigo-500"
             />
           </div>
 
@@ -134,7 +141,7 @@ export function SavePromptDialog({
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
-              className="w-full resize-none rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-500"
+              className="w-full resize-none rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-indigo-500"
               placeholder="Describe the music..."
             />
           </div>
@@ -148,13 +155,13 @@ export function SavePromptDialog({
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] text-emerald-300"
+                  className="inline-flex items-center gap-1 rounded-full bg-indigo-500/20 px-2 py-0.5 text-[11px] text-indigo-300"
                 >
                   {tag}
                   <button
                     type="button"
                     onClick={() => handleRemoveTag(tag)}
-                    className="text-emerald-400 hover:text-white"
+                    className="text-indigo-400 hover:text-white"
                     aria-label={`Remove tag ${tag}`}
                   >
                     &times;
@@ -168,7 +175,7 @@ export function SavePromptDialog({
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={handleTagKeyDown}
               placeholder="Type and press Enter to add tags"
-              className="w-full rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-1.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-500"
+              className="w-full rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-1.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-indigo-500"
             />
             {suggestedTags.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
@@ -177,7 +184,7 @@ export function SavePromptDialog({
                     key={tag}
                     type="button"
                     onClick={() => handleAddTag(tag)}
-                    className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400 transition-colors hover:border-emerald-500/50 hover:text-emerald-300"
+                    className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400 transition-colors hover:border-indigo-500/50 hover:text-indigo-300"
                   >
                     + {tag}
                   </button>
@@ -197,7 +204,7 @@ export function SavePromptDialog({
               onChange={(e) => setCategory(e.target.value)}
               placeholder="e.g. bass, drums, vocals, ambient"
               list="prompt-library-categories"
-              className="w-full rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-1.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-500"
+              className="w-full rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-1.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-indigo-500"
             />
             {allCategories.length > 0 && (
               <datalist id="prompt-library-categories">

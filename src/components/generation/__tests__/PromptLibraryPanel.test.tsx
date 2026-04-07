@@ -95,7 +95,7 @@ describe('PromptLibraryPanel', () => {
     expect(screen.getByText('Fav')).toBeInTheDocument();
   });
 
-  it('deletes a prompt', () => {
+  it('deletes a prompt after confirmation', () => {
     const store = useGenerationStore.getState();
     store.saveToPromptLibrary({
       prompt: 'To delete',
@@ -109,8 +109,16 @@ describe('PromptLibraryPanel', () => {
 
     expect(screen.getByText('Delete Me')).toBeInTheDocument();
 
+    // First click shows confirmation
     const deleteButton = screen.getByText('Delete');
     fireEvent.click(deleteButton);
+
+    // Confirmation dialog should appear
+    expect(screen.getByText(/Delete "Delete Me"\?/)).toBeInTheDocument();
+
+    // Confirm the delete
+    const confirmButton = screen.getByText('Confirm');
+    fireEvent.click(confirmButton);
 
     expect(screen.getByText('No saved prompts yet')).toBeInTheDocument();
   });

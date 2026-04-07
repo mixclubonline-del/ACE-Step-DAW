@@ -23,17 +23,15 @@ function PromptCard({
   onApply,
   onToggleFavorite,
   onDelete,
-  onEdit,
 }: {
   prompt: SavedPrompt;
   onApply: () => void;
   onToggleFavorite: () => void;
   onDelete: () => void;
-  onEdit: () => void;
 }) {
   return (
     <div
-      className="group rounded-lg border border-[#333] bg-[#232323] p-3 transition-colors hover:border-emerald-500/30"
+      className="group rounded-lg border border-[#333] bg-[#232323] p-3 transition-colors hover:border-indigo-500/30"
       data-testid={`prompt-card-${prompt.id}`}
     >
       <div className="flex items-start gap-2">
@@ -74,32 +72,25 @@ function PromptCard({
 
       {/* Metadata */}
       <div className="mt-2 flex items-center gap-3 text-[10px] text-zinc-500">
-        {prompt.metadata.bpm && <span>{prompt.metadata.bpm} BPM</span>}
+        {prompt.metadata.bpm && <span className="font-mono">{prompt.metadata.bpm} BPM</span>}
         {prompt.metadata.keyScale && <span>{prompt.metadata.keyScale}</span>}
         {prompt.category && <span>{prompt.category}</span>}
-        {prompt.useCount > 0 && <span>Used {prompt.useCount}x</span>}
+        {prompt.useCount > 0 && <span className="font-mono">Used {prompt.useCount}x</span>}
       </div>
 
-      {/* Actions */}
-      <div className="mt-2 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* Actions — visible on hover and keyboard focus-within */}
+      <div className="mt-2 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <button
           type="button"
           onClick={onApply}
-          className="rounded-md bg-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
+          className="rounded-md bg-indigo-500/20 px-2.5 py-1 text-[11px] font-medium text-indigo-300 transition-colors hover:bg-indigo-500/30 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
         >
           Apply
         </button>
         <button
           type="button"
-          onClick={onEdit}
-          className="rounded-md bg-zinc-700/50 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-700"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
           onClick={onDelete}
-          className="rounded-md bg-zinc-700/50 px-2 py-1 text-[11px] text-red-400 transition-colors hover:bg-red-500/20"
+          className="rounded-md bg-zinc-700/50 px-2 py-1 text-[11px] text-red-400 transition-colors hover:bg-red-500/20 focus:outline-none focus:ring-1 focus:ring-red-500/50"
         >
           Delete
         </button>
@@ -111,7 +102,6 @@ function PromptCard({
 export function PromptLibraryPanel() {
   const promptLibrary = useGenerationStore((s) => s.promptLibrary);
   const searchPromptLibrary = useGenerationStore((s) => s.searchPromptLibrary);
-  const getSortedPromptLibrary = useGenerationStore((s) => s.getSortedPromptLibrary);
   const applyPromptFromLibrary = useGenerationStore((s) => s.applyPromptFromLibrary);
   const togglePromptLibraryFavorite = useGenerationStore((s) => s.togglePromptLibraryFavorite);
   const deleteFromPromptLibrary = useGenerationStore((s) => s.deleteFromPromptLibrary);
@@ -119,8 +109,6 @@ export function PromptLibraryPanel() {
   const getPromptLibraryCategories = useGenerationStore((s) => s.getPromptLibraryCategories);
   const exportPromptLibrary = useGenerationStore((s) => s.exportPromptLibrary);
   const importPromptLibrary = useGenerationStore((s) => s.importPromptLibrary);
-  const updatePromptLibraryEntry = useGenerationStore((s) => s.updatePromptLibraryEntry);
-
   const openGenerationPanelView = useUIStore((s) => s.openGenerationPanelView);
 
   const [search, setSearch] = useState('');
@@ -128,7 +116,7 @@ export function PromptLibraryPanel() {
   const [filterTag, setFilterTag] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -159,8 +147,8 @@ export function PromptLibraryPanel() {
     return sorted;
   }, [promptLibrary, search, filterTag, filterCategory, favoritesOnly, sortKey, searchPromptLibrary]);
 
-  const allTags = useMemo(() => getPromptLibraryTags(), [promptLibrary, getPromptLibraryTags]);
-  const allCategories = useMemo(() => getPromptLibraryCategories(), [promptLibrary, getPromptLibraryCategories]);
+  const allTags = useMemo(() => getPromptLibraryTags(), [promptLibrary]); // eslint-disable-line react-hooks/exhaustive-deps
+  const allCategories = useMemo(() => getPromptLibraryCategories(), [promptLibrary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleApply = useCallback((id: string) => {
     const applied = applyPromptFromLibrary(id);
@@ -170,8 +158,13 @@ export function PromptLibraryPanel() {
     }
   }, [applyPromptFromLibrary, openGenerationPanelView]);
 
-  const handleDelete = useCallback((id: string, title: string) => {
+  const handleDeleteRequest = useCallback((id: string) => {
+    setConfirmDeleteId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const handleDeleteConfirm = useCallback((id: string, title: string) => {
     deleteFromPromptLibrary(id);
+    setConfirmDeleteId(null);
     toastSuccess(`Deleted "${title}"`);
   }, [deleteFromPromptLibrary]);
 
@@ -215,7 +208,7 @@ export function PromptLibraryPanel() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-500"
+            className="w-full rounded-md border border-[#3a3a3a] bg-[#20242c] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-indigo-500"
             placeholder="Search saved prompts..."
             aria-label="Search prompt library"
           />
@@ -224,7 +217,7 @@ export function PromptLibraryPanel() {
             <select
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value as PromptLibrarySortKey)}
-              className="rounded-md border border-[#3a3a3a] bg-[#20242c] px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-emerald-500"
+              className="rounded-md border border-[#3a3a3a] bg-[#20242c] px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-indigo-500"
               aria-label="Sort prompts"
             >
               <option value="recent">Recent</option>
@@ -237,7 +230,7 @@ export function PromptLibraryPanel() {
               <select
                 value={filterTag}
                 onChange={(e) => setFilterTag(e.target.value)}
-                className="rounded-md border border-[#3a3a3a] bg-[#20242c] px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-emerald-500"
+                className="rounded-md border border-[#3a3a3a] bg-[#20242c] px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-indigo-500"
                 aria-label="Filter by tag"
               >
                 <option value="">All tags</option>
@@ -251,7 +244,7 @@ export function PromptLibraryPanel() {
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="rounded-md border border-[#3a3a3a] bg-[#20242c] px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-emerald-500"
+                className="rounded-md border border-[#3a3a3a] bg-[#20242c] px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-indigo-500"
                 aria-label="Filter by category"
               >
                 <option value="">All categories</option>
@@ -268,7 +261,7 @@ export function PromptLibraryPanel() {
                 type="checkbox"
                 checked={favoritesOnly}
                 onChange={(e) => setFavoritesOnly(e.target.checked)}
-                className="accent-emerald-500"
+                className="accent-indigo-500"
               />
               Favorites only
             </label>
@@ -324,14 +317,33 @@ export function PromptLibraryPanel() {
               {filteredPrompts.length} prompt{filteredPrompts.length !== 1 ? 's' : ''}
             </div>
             {filteredPrompts.map((prompt) => (
-              <PromptCard
-                key={prompt.id}
-                prompt={prompt}
-                onApply={() => handleApply(prompt.id)}
-                onToggleFavorite={() => togglePromptLibraryFavorite(prompt.id)}
-                onDelete={() => handleDelete(prompt.id, prompt.title)}
-                onEdit={() => setEditingPromptId(prompt.id)}
-              />
+              <div key={prompt.id}>
+                <PromptCard
+                  prompt={prompt}
+                  onApply={() => handleApply(prompt.id)}
+                  onToggleFavorite={() => togglePromptLibraryFavorite(prompt.id)}
+                  onDelete={() => handleDeleteRequest(prompt.id)}
+                />
+                {confirmDeleteId === prompt.id && (
+                  <div className="mt-1 flex items-center gap-2 rounded-md border border-red-500/30 bg-red-950/20 px-3 py-1.5">
+                    <span className="text-[11px] text-red-300">Delete "{prompt.title}"?</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteConfirm(prompt.id, prompt.title)}
+                      className="rounded bg-red-500/30 px-2 py-0.5 text-[10px] font-medium text-red-200 transition-colors hover:bg-red-500/50"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="text-[10px] text-zinc-400 hover:text-zinc-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
