@@ -15,7 +15,8 @@
 export interface VoiceInfluenceApiParams {
   /** Maps to CoverTaskParams.audio_cover_strength. null = no voice active. */
   audio_cover_strength: number | null;
-  /** Multiplier for guidance_scale. null = no voice active. */
+  /** Multiplier for guidance_scale (local abstraction — callers apply this to the
+   *  existing guidance_scale in their task params). null = no voice active. */
   guidance_scale_factor: number | null;
 }
 

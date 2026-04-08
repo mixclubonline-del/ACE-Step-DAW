@@ -921,8 +921,8 @@ export const useGenerationStore = create<GenerationState>()(
           generationForm: {
             ...s.generationForm,
             selectedVoiceProfileId: profileId,
-            audioInfluence: profile?.defaultAudioInfluence ?? DEFAULT_AUDIO_INFLUENCE,
-            styleInfluence: profile?.defaultStyleInfluence ?? DEFAULT_STYLE_INFLUENCE,
+            audioInfluence: clampInfluence(profile?.defaultAudioInfluence ?? DEFAULT_AUDIO_INFLUENCE),
+            styleInfluence: clampInfluence(profile?.defaultStyleInfluence ?? DEFAULT_STYLE_INFLUENCE),
             requestError: null,
           },
         };

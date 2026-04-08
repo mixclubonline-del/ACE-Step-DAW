@@ -73,7 +73,7 @@ describe('VoiceProfileSelector', () => {
 
   it('renders nothing when no profiles exist', () => {
     const { container } = render(<VoiceProfileSelector />);
-    // Should still render the selector even with no profiles (shows "No voice" only)
+    // Should not render the selector when no voice profiles are available.
     expect(container.querySelector('select')).toBeNull();
   });
 });

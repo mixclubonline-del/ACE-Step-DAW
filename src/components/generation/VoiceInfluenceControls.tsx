@@ -9,7 +9,7 @@ import {
 /**
  * Audio/Style Influence sliders for voice-conditioned generation.
  * Rendered only when a voice profile is selected in the generation form.
- * Follows DAW interaction patterns: double-click to reset, real-time percentage tooltip.
+ * Follows DAW interaction patterns: double-click to reset and real-time percentage feedback.
  */
 export function VoiceInfluenceControls() {
   const selectedVoiceProfileId = useGenerationStore((s) => s.generationForm.selectedVoiceProfileId);
@@ -35,13 +35,13 @@ export function VoiceInfluenceControls() {
   );
 
   const handleAudioDoubleClick = useCallback(
-    () => setAudioInfluence(DEFAULT_AUDIO_INFLUENCE),
-    [setAudioInfluence],
+    () => setAudioInfluence(selectedProfile?.defaultAudioInfluence ?? DEFAULT_AUDIO_INFLUENCE),
+    [setAudioInfluence, selectedProfile],
   );
 
   const handleStyleDoubleClick = useCallback(
-    () => setStyleInfluence(DEFAULT_STYLE_INFLUENCE),
-    [setStyleInfluence],
+    () => setStyleInfluence(selectedProfile?.defaultStyleInfluence ?? DEFAULT_STYLE_INFLUENCE),
+    [setStyleInfluence, selectedProfile],
   );
 
   // Don't render when no voice profile is selected

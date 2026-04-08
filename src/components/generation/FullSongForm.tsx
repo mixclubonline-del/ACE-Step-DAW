@@ -188,9 +188,8 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
       if (p.splitToStems !== undefined) setSplitToStems(p.splitToStems);
       if (p.stemCount !== undefined) setStemCount(p.stemCount);
       if (p.useProjectMeta !== undefined) setUseProjectMeta(p.useProjectMeta);
-      if (p.voiceProfileId) {
-        useGenerationStore.getState().setSelectedVoiceProfile(p.voiceProfileId);
-      }
+      // Hydrate voice state — clear if the clip has no voice params (older clips)
+      useGenerationStore.getState().setSelectedVoiceProfile(p.voiceProfileId ?? null);
       if (p.audioInfluence !== undefined) {
         useGenerationStore.getState().setAudioInfluence(p.audioInfluence);
       }
@@ -260,6 +259,7 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
     }
 
     // New generation: fire-and-forget, runs in background
+    // TODO(#1087): Pass voice influence params once backend supports voice-conditioned generation
     generateText2Music({
       prompt: prompt.trim(),
       lyrics: instrumental ? '[Instrumental]' : lyrics,
