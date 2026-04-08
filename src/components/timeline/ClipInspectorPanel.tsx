@@ -5,7 +5,7 @@
  * Appears as a bottom panel when toggled via keyboard shortcut (Shift+I)
  * or command palette.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { useProjectStore } from '../../store/projectStore';
 import { loadAudioBlobByKey } from '../../services/audioFileManager';
@@ -52,11 +52,109 @@ function MetaRow({ label, value }: { label: string; value: string | number | und
   );
 }
 
-function TagChip({ tag }: { tag: string }) {
+function TagChip({ tag, onRemove }: { tag: string; onRemove?: () => void }) {
   return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] bg-zinc-700/50 text-zinc-300 border border-zinc-600/40">
+    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] bg-zinc-700/50 text-zinc-300 border border-zinc-600/40">
       {tag}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="ml-0.5 text-zinc-500 hover:text-zinc-200 transition-colors leading-none"
+          aria-label={`Remove tag ${tag}`}
+        >
+          ×
+        </button>
+      )}
     </span>
+  );
+}
+
+function collectProjectTags(project: import('../../types/project').Project | null): string[] {
+  if (!project) return [];
+  const tagSet = new Set<string>();
+  for (const track of project.tracks) {
+    for (const clip of track.clips) {
+      if (clip.tags) clip.tags.forEach((t) => tagSet.add(t));
+    }
+  }
+  return Array.from(tagSet).sort();
+}
+
+function useAllProjectTags(): string[] {
+  const project = useProjectStore((s) => s.project);
+  return useMemo(() => collectProjectTags(project), [project]);
+}
+
+function TagInput({ clipId, existingTags }: { clipId: string; existingTags: string[] }) {
+  const [value, setValue] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const addClipTag = useProjectStore((s) => s.addClipTag);
+  const allTags = useAllProjectTags();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const suggestions = useMemo(() => {
+    if (!value.trim()) return [];
+    const lower = value.toLowerCase();
+    return allTags.filter(
+      (t) => t.toLowerCase().includes(lower) && !existingTags.includes(t),
+    );
+  }, [value, allTags, existingTags]);
+
+  const handleSubmit = useCallback(() => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    addClipTag(clipId, trimmed);
+    setValue('');
+    setShowSuggestions(false);
+  }, [value, clipId, addClipTag]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSubmit();
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setValue('');
+    }
+  }, [handleSubmit]);
+
+  const handleSuggestionClick = useCallback((tag: string) => {
+    addClipTag(clipId, tag);
+    setValue('');
+    setShowSuggestions(false);
+    inputRef.current?.focus();
+  }, [clipId, addClipTag]);
+
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setShowSuggestions(true); }}
+        onKeyDown={handleKeyDown}
+        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+        onFocus={() => { if (value.trim()) setShowSuggestions(true); }}
+        placeholder="Add tag..."
+        className="w-full px-1.5 py-0.5 text-[10px] bg-zinc-800/50 border border-zinc-700/50 rounded text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500/70"
+      />
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute z-10 top-full left-0 right-0 mt-0.5 bg-zinc-800 border border-zinc-600/50 rounded shadow-lg max-h-24 overflow-y-auto">
+          {suggestions.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              data-testid="tag-suggestion"
+              onClick={() => handleSuggestionClick(tag)}
+              className="block w-full text-left px-2 py-1 text-[10px] text-zinc-300 hover:bg-zinc-700/50 transition-colors"
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -163,6 +261,7 @@ function ClipDetail({ clip }: { clip: Clip }) {
   const track = useProjectStore((s) =>
     s.project?.tracks.find((t) => t.id === clip.trackId),
   );
+  const removeClipTag = useProjectStore((s) => s.removeClipTag);
   const audioMetrics = useClipAudioMetrics(clip);
 
   return (
@@ -247,18 +346,23 @@ function ClipDetail({ clip }: { clip: Clip }) {
       )}
 
       {/* Tags */}
-      {clip.tags && clip.tags.length > 0 && (
-        <div>
-          <div className="text-[9px] text-zinc-500 uppercase tracking-wider font-semibold mb-1">
-            Tags
-          </div>
-          <div className="flex flex-wrap gap-1">
+      <div>
+        <div className="text-[9px] text-zinc-500 uppercase tracking-wider font-semibold mb-1">
+          Tags
+        </div>
+        {clip.tags && clip.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1.5">
             {clip.tags.map((tag) => (
-              <TagChip key={tag} tag={tag} />
+              <TagChip
+                key={tag}
+                tag={tag}
+                onRemove={() => removeClipTag(clip.id, tag)}
+              />
             ))}
           </div>
-        </div>
-      )}
+        )}
+        <TagInput clipId={clip.id} existingTags={clip.tags ?? []} />
+      </div>
     </div>
   );
 }

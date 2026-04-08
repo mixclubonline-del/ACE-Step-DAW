@@ -13,6 +13,7 @@ import { SmartControlsPanel } from '../controls/SmartControlsPanel';
 import { SharedProjectPage } from '../sharing/SharedProjectPage';
 import { ToastContainer } from '../ui/Toast';
 import { UndoHistoryPanel } from './UndoHistoryPanel';
+import { TrackPresetManagerPanel } from './TrackPresetManagerPanel';
 import { StatusBar } from './StatusBar';
 import { SkipLinks } from '../ui/SkipLinks';
 import { useAudioEngine } from '../../hooks/useAudioEngine';
@@ -202,6 +203,7 @@ function EditorShell() {
       {project && <AddLayerPanel />}
       <ToastContainer />
       <UndoHistoryPanel />
+      <TrackPresetManagerPanel />
       <WelcomeOverlay />
 
       {/* Modals — lazy-loaded, code-split */}

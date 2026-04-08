@@ -162,6 +162,166 @@ describe('ClipInspectorPanel', () => {
     expect(screen.getByText(/uploaded/i)).toBeTruthy();
   });
 
+  // ── Tag Management UI ──────────────────────────────────────────────
+
+  it('shows tag section with add input even when clip has no tags', () => {
+    setupStores([makeClip({ tags: [] })]);
+    render(<ClipInspectorPanel />);
+    expect(screen.getByPlaceholderText(/add tag/i)).toBeTruthy();
+  });
+
+  it('renders remove button on each tag chip', () => {
+    setupStores([makeClip({ tags: ['verse', 'favorite'] })]);
+    render(<ClipInspectorPanel />);
+    const removeButtons = screen.getAllByRole('button', { name: /remove tag/i });
+    expect(removeButtons).toHaveLength(2);
+  });
+
+  it('calls removeClipTag when remove button is clicked', () => {
+    const clip = makeClip({ tags: ['verse', 'favorite'] });
+    setupStores([clip]);
+    const removeClipTag = vi.fn();
+    useProjectStore.setState({ removeClipTag });
+
+    render(<ClipInspectorPanel />);
+    const removeButtons = screen.getAllByRole('button', { name: /remove tag/i });
+    fireEvent.click(removeButtons[0]);
+    expect(removeClipTag).toHaveBeenCalledWith('clip-1', 'verse');
+  });
+
+  it('calls addClipTag when tag is submitted via Enter', () => {
+    setupStores([makeClip({ tags: [] })]);
+    const addClipTag = vi.fn();
+    useProjectStore.setState({ addClipTag });
+
+    render(<ClipInspectorPanel />);
+    const input = screen.getByPlaceholderText(/add tag/i);
+    fireEvent.change(input, { target: { value: 'chorus' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(addClipTag).toHaveBeenCalledWith('clip-1', 'chorus');
+  });
+
+  it('clears input after adding a tag', () => {
+    setupStores([makeClip({ tags: [] })]);
+    useProjectStore.setState({ addClipTag: vi.fn() });
+
+    render(<ClipInspectorPanel />);
+    const input = screen.getByPlaceholderText(/add tag/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'chorus' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(input.value).toBe('');
+  });
+
+  it('does not call addClipTag for empty input', () => {
+    setupStores([makeClip({ tags: [] })]);
+    const addClipTag = vi.fn();
+    useProjectStore.setState({ addClipTag });
+
+    render(<ClipInspectorPanel />);
+    const input = screen.getByPlaceholderText(/add tag/i);
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(addClipTag).not.toHaveBeenCalled();
+  });
+
+  it('shows autocomplete suggestions from existing project tags', () => {
+    const clips = [
+      makeClip({ id: 'clip-1', tags: ['verse', 'intro'] }),
+      makeClip({ id: 'clip-2', tags: ['chorus', 'verse'] }),
+    ];
+    useProjectStore.setState({
+      project: {
+        id: 'p',
+        name: 'Test',
+        tracks: [makeTrack({ clips })],
+        bpm: 120,
+        keyScale: 'C major',
+        timeSignature: 4,
+        timeSignatureDenominator: 4,
+        totalDuration: 30,
+        markers: [],
+        tempoMap: [],
+        timeSignatureMap: [],
+      } as unknown as Project,
+    });
+    useUIStore.setState({
+      selectedClipIds: new Set(['clip-1']),
+      showClipInspector: true,
+    });
+
+    render(<ClipInspectorPanel />);
+    const input = screen.getByPlaceholderText(/add tag/i);
+    fireEvent.change(input, { target: { value: 'ch' } });
+    expect(screen.getByText('chorus')).toBeTruthy();
+  });
+
+  it('does not suggest tags already on the clip', () => {
+    const clips = [
+      makeClip({ id: 'clip-1', tags: ['verse', 'intro'] }),
+      makeClip({ id: 'clip-2', tags: ['chorus'] }),
+    ];
+    useProjectStore.setState({
+      project: {
+        id: 'p',
+        name: 'Test',
+        tracks: [makeTrack({ clips })],
+        bpm: 120,
+        keyScale: 'C major',
+        timeSignature: 4,
+        timeSignatureDenominator: 4,
+        totalDuration: 30,
+        markers: [],
+        tempoMap: [],
+        timeSignatureMap: [],
+      } as unknown as Project,
+    });
+    useUIStore.setState({
+      selectedClipIds: new Set(['clip-1']),
+      showClipInspector: true,
+    });
+
+    render(<ClipInspectorPanel />);
+    const input = screen.getByPlaceholderText(/add tag/i);
+    fireEvent.change(input, { target: { value: 'v' } });
+    // 'verse' is already on clip-1, so it should not appear as a suggestion
+    const suggestions = screen.queryAllByTestId('tag-suggestion');
+    const verseInSuggestions = suggestions.some((el) => el.textContent === 'verse');
+    expect(verseInSuggestions).toBe(false);
+  });
+
+  it('applies autocomplete suggestion on click', () => {
+    const clips = [
+      makeClip({ id: 'clip-1', tags: [] }),
+      makeClip({ id: 'clip-2', tags: ['chorus'] }),
+    ];
+    useProjectStore.setState({
+      project: {
+        id: 'p',
+        name: 'Test',
+        tracks: [makeTrack({ clips })],
+        bpm: 120,
+        keyScale: 'C major',
+        timeSignature: 4,
+        timeSignatureDenominator: 4,
+        totalDuration: 30,
+        markers: [],
+        tempoMap: [],
+        timeSignatureMap: [],
+      } as unknown as Project,
+      addClipTag: vi.fn(),
+    });
+    useUIStore.setState({
+      selectedClipIds: new Set(['clip-1']),
+      showClipInspector: true,
+    });
+
+    render(<ClipInspectorPanel />);
+    const input = screen.getByPlaceholderText(/add tag/i);
+    fireEvent.change(input, { target: { value: 'ch' } });
+    fireEvent.click(screen.getByText('chorus'));
+    expect(useProjectStore.getState().addClipTag).toHaveBeenCalledWith('clip-1', 'chorus');
+  });
+
   it('displays multi-selection summary for multiple clips', () => {
     const clips = [
       makeClip({ id: 'clip-1', duration: 10 }),

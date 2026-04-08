@@ -1,0 +1,130 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { TrackPresetManager } from '../TrackPresetManager';
+import { useProjectStore } from '../../../store/projectStore';
+import type { Project, TrackPreset } from '../../../types/project';
+
+function makePreset(overrides: Partial<TrackPreset> = {}): TrackPreset {
+  return {
+    id: overrides.id ?? 'preset-1',
+    name: overrides.name ?? 'Warm Pad',
+    trackName: 'synth',
+    trackType: 'midi',
+    settings: {
+      synthPreset: 'pad',
+      volume: 0.8,
+      pan: 0,
+    },
+    effects: [],
+    midiEffects: [],
+    createdAt: Date.now(),
+    ...overrides,
+  } as TrackPreset;
+}
+
+function setupProject(presets: TrackPreset[] = []) {
+  useProjectStore.setState({
+    project: {
+      id: 'p',
+      name: 'Test',
+      tracks: [{ id: 'track-1', trackName: 'synth', displayName: 'Synth', color: '#ff0000', order: 0, volume: 0.8, muted: false, soloed: false, clips: [], effects: [], effectsEnabled: true }],
+      bpm: 120,
+      keyScale: 'C major',
+      timeSignature: 4,
+      timeSignatureDenominator: 4,
+      totalDuration: 0,
+      markers: [],
+      tempoMap: [],
+      timeSignatureMap: [],
+      trackPresets: presets,
+    } as unknown as Project,
+  });
+}
+
+describe('TrackPresetManager', () => {
+  beforeEach(() => {
+    useProjectStore.setState({ project: null });
+  });
+
+  it('renders empty state when no presets exist', () => {
+    setupProject([]);
+    render(<TrackPresetManager />);
+    expect(screen.getByText(/no track presets/i)).toBeTruthy();
+  });
+
+  it('lists presets by name', () => {
+    setupProject([
+      makePreset({ id: 'p1', name: 'Warm Pad' }),
+      makePreset({ id: 'p2', name: 'Pluck Lead' }),
+    ]);
+    render(<TrackPresetManager />);
+    expect(screen.getByText('Warm Pad')).toBeTruthy();
+    expect(screen.getByText('Pluck Lead')).toBeTruthy();
+  });
+
+  it('shows track type for each preset', () => {
+    setupProject([makePreset({ trackType: 'midi' })]);
+    render(<TrackPresetManager />);
+    expect(screen.getByText(/midi/i)).toBeTruthy();
+  });
+
+  it('calls deleteTrackPreset when delete is clicked', () => {
+    setupProject([makePreset({ id: 'p1' })]);
+    const deleteTrackPreset = vi.fn();
+    useProjectStore.setState({ deleteTrackPreset });
+
+    render(<TrackPresetManager />);
+    fireEvent.click(screen.getByRole('button', { name: /delete preset/i }));
+    expect(deleteTrackPreset).toHaveBeenCalledWith('p1');
+  });
+
+  it('calls applyTrackPreset when apply is clicked', () => {
+    setupProject([makePreset({ id: 'p1' })]);
+    const applyTrackPreset = vi.fn(() => undefined);
+    useProjectStore.setState({ applyTrackPreset });
+
+    render(<TrackPresetManager />);
+    fireEvent.click(screen.getByRole('button', { name: /apply preset/i }));
+    expect(applyTrackPreset).toHaveBeenCalledWith('p1');
+  });
+
+  it('shows save preset form with track selector', () => {
+    setupProject([]);
+    render(<TrackPresetManager />);
+    expect(screen.getByPlaceholderText(/preset name/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /save preset/i })).toBeTruthy();
+  });
+
+  it('calls saveTrackPreset with selected track and name', () => {
+    setupProject([]);
+    const saveTrackPreset = vi.fn(() => makePreset());
+    useProjectStore.setState({ saveTrackPreset });
+
+    render(<TrackPresetManager />);
+    const nameInput = screen.getByPlaceholderText(/preset name/i);
+    fireEvent.change(nameInput, { target: { value: 'My Preset' } });
+    fireEvent.click(screen.getByRole('button', { name: /save preset/i }));
+    expect(saveTrackPreset).toHaveBeenCalledWith('track-1', 'My Preset');
+  });
+
+  it('does not save with empty name', () => {
+    setupProject([]);
+    const saveTrackPreset = vi.fn(() => makePreset());
+    useProjectStore.setState({ saveTrackPreset });
+
+    render(<TrackPresetManager />);
+    fireEvent.click(screen.getByRole('button', { name: /save preset/i }));
+    expect(saveTrackPreset).not.toHaveBeenCalled();
+  });
+
+  it('clears name input after saving', () => {
+    setupProject([]);
+    useProjectStore.setState({ saveTrackPreset: vi.fn(() => makePreset()) });
+
+    render(<TrackPresetManager />);
+    const nameInput = screen.getByPlaceholderText(/preset name/i) as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'My Preset' } });
+    fireEvent.click(screen.getByRole('button', { name: /save preset/i }));
+    expect(nameInput.value).toBe('');
+  });
+});
