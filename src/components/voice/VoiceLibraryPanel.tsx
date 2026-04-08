@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useVoiceStore } from '../../store/voiceStore';
 import { VoiceCard } from './VoiceCard';
 import { VoiceEditDialog } from './VoiceEditDialog';
@@ -31,7 +31,22 @@ export function VoiceLibraryPanel() {
   const [isUploading, setIsUploading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Clean up audio playback and object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+      }
+    };
+  }, []);
 
   const filteredVoices = getFilteredVoices();
   const allTags = getAllTags();
@@ -83,10 +98,14 @@ export function VoiceLibraryPanel() {
   // ─── Preview playback ────────────────────────────────────
   const handlePlay = useCallback(
     async (voiceId: string) => {
-      // Stop current playback
+      // Stop current playback and revoke old URL
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
+      }
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
       }
 
       const blob = await loadAudioBlob(voiceId);
@@ -96,14 +115,17 @@ export function VoiceLibraryPanel() {
       }
 
       const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
       const audio = new Audio(url);
       audio.onended = () => {
         setPlayingVoiceId(null);
         URL.revokeObjectURL(url);
+        audioUrlRef.current = null;
       };
       audio.onerror = () => {
         setPlayingVoiceId(null);
         URL.revokeObjectURL(url);
+        audioUrlRef.current = null;
       };
       audioRef.current = audio;
       setPlayingVoiceId(voiceId);
@@ -116,6 +138,10 @@ export function VoiceLibraryPanel() {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
     }
     setPlayingVoiceId(null);
   }, []);
@@ -150,7 +176,7 @@ export function VoiceLibraryPanel() {
   return (
     <div className="flex flex-col" data-testid="voice-library-panel">
       {/* Header */}
-      <div className="flex items-center h-7 px-3 border-b border-[#3a3a3a] bg-[#2a2a2a] shrink-0">
+      <div className="flex items-center h-7 px-3 border-b border-daw-border bg-daw-surface-2 shrink-0">
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
@@ -204,7 +230,7 @@ export function VoiceLibraryPanel() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search voices..."
-            className="w-full rounded border border-[#444] bg-[#222] px-2 py-1 text-[11px] text-zinc-300 placeholder:text-zinc-600 focus:border-daw-accent focus:outline-none"
+            className="w-full rounded border border-daw-border bg-daw-bg px-2 py-1 text-[11px] text-zinc-300 placeholder:text-zinc-600 focus:border-daw-accent focus:outline-none"
             data-testid="voice-search-input"
           />
 
@@ -217,7 +243,7 @@ export function VoiceLibraryPanel() {
                 className={`rounded px-1.5 py-0.5 text-[9px] transition-colors ${
                   filterTag === null
                     ? 'bg-daw-accent text-white'
-                    : 'bg-[#333] text-zinc-500 hover:text-zinc-300'
+                    : 'bg-daw-surface-2 text-zinc-500 hover:text-zinc-300'
                 }`}
                 data-testid="voice-tag-all"
               >
@@ -231,7 +257,7 @@ export function VoiceLibraryPanel() {
                   className={`rounded px-1.5 py-0.5 text-[9px] transition-colors ${
                     filterTag === tag
                       ? 'bg-daw-accent text-white'
-                      : 'bg-[#333] text-zinc-500 hover:text-zinc-300'
+                      : 'bg-daw-surface-2 text-zinc-500 hover:text-zinc-300'
                   }`}
                   data-testid={`voice-tag-${tag}`}
                 >

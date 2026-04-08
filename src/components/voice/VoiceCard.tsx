@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useVoiceStore } from '../../store/voiceStore';
+import { useCallback } from 'react';
 import type { VoiceProfile } from '../../types/voice';
 import { renderSimplePeaks } from '../generation/WaveformPreview';
 
@@ -70,13 +69,13 @@ export function VoiceCard({
       className={`group relative flex flex-col gap-1.5 rounded-lg border p-2 cursor-pointer transition-colors ${
         isSelected
           ? 'border-daw-accent bg-daw-accent/10'
-          : 'border-[#333] bg-[#232323] hover:bg-[#2a2a2a] hover:border-[#444]'
+          : 'border-daw-border bg-daw-surface hover:bg-daw-surface-2 hover:border-daw-surface-3'
       }`}
       onClick={() => onSelect(voice.id)}
       data-testid={`voice-card-${voice.id}`}
     >
       {/* Waveform thumbnail */}
-      <div className="relative h-8 rounded bg-[#1a1a1e] overflow-hidden">
+      <div className="relative h-8 rounded bg-daw-bg overflow-hidden">
         {voice.waveformPeaks && voice.waveformPeaks.length > 0 ? (
           <svg
             width="100%"
@@ -85,7 +84,7 @@ export function VoiceCard({
             preserveAspectRatio="none"
             className="absolute inset-0"
           >
-            {renderSimplePeaks(voice.waveformPeaks, isSelected ? '#7c3aed' : '#6b7280')}
+            {renderSimplePeaks(voice.waveformPeaks, isSelected ? 'var(--color-daw-accent)' : '#6b7280')}
           </svg>
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -134,7 +133,7 @@ export function VoiceCard({
           <button
             type="button"
             onClick={handleEdit}
-            className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-200 hover:bg-[#333]"
+            className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-200 hover:bg-daw-hover-subtle"
             aria-label="Edit voice"
             data-testid={`voice-edit-${voice.id}`}
           >
@@ -162,7 +161,7 @@ export function VoiceCard({
           {voice.tags.map((tag) => (
             <span
               key={tag}
-              className="text-[8px] px-1 py-px rounded bg-[#333] text-zinc-500"
+              className="text-[8px] px-1 py-px rounded bg-daw-surface-2 text-zinc-500"
             >
               {tag}
             </span>

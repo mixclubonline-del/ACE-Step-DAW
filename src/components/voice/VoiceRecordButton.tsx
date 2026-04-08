@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { recordingEngine } from '../../engine/RecordingEngine';
 import { audioBufferToWavBlob } from '../../utils/wav';
 import { useVoiceStore } from '../../store/voiceStore';
@@ -13,6 +13,13 @@ export function VoiceRecordButton() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   const startRecording = useCallback(async () => {
     const ok = await recordingEngine.requestPermission();

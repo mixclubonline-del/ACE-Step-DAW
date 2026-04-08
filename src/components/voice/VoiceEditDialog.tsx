@@ -43,7 +43,7 @@ export function VoiceEditDialog({ voiceId, onClose }: VoiceEditDialogProps) {
       data-testid="voice-edit-dialog"
     >
       <div
-        className="w-80 rounded-lg border border-[#3a3a3a] bg-[#1e1e22] p-4 shadow-2xl"
+        className="w-80 rounded-lg border border-daw-border bg-daw-surface p-4 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-sm font-semibold text-zinc-100 mb-3">Edit Voice Profile</h3>
@@ -56,7 +56,7 @@ export function VoiceEditDialog({ voiceId, onClose }: VoiceEditDialogProps) {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full rounded border border-[#444] bg-[#2a2a2a] px-2 py-1.5 text-xs text-zinc-200 focus:border-daw-accent focus:outline-none"
+              className="mt-1 w-full rounded border border-daw-border bg-daw-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-daw-accent focus:outline-none"
               data-testid="voice-edit-name"
             />
           </div>
@@ -73,7 +73,7 @@ export function VoiceEditDialog({ voiceId, onClose }: VoiceEditDialogProps) {
                   className={`rounded px-2 py-1 text-[10px] font-medium transition-colors ${
                     skillLevel === level
                       ? 'bg-daw-accent text-white'
-                      : 'bg-[#2a2a2a] text-zinc-400 hover:bg-[#333] hover:text-zinc-200'
+                      : 'bg-daw-surface-2 text-zinc-400 hover:bg-daw-hover-subtle hover:text-zinc-200'
                   }`}
                   data-testid={`voice-edit-skill-${level}`}
                 >
@@ -91,7 +91,7 @@ export function VoiceEditDialog({ voiceId, onClose }: VoiceEditDialogProps) {
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
               placeholder="e.g. English, Chinese"
-              className="mt-1 w-full rounded border border-[#444] bg-[#2a2a2a] px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-daw-accent focus:outline-none"
+              className="mt-1 w-full rounded border border-daw-border bg-daw-surface-2 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-daw-accent focus:outline-none"
               data-testid="voice-edit-language"
             />
           </div>
@@ -104,7 +104,7 @@ export function VoiceEditDialog({ voiceId, onClose }: VoiceEditDialogProps) {
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
               placeholder="rock, energetic, female"
-              className="mt-1 w-full rounded border border-[#444] bg-[#2a2a2a] px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-daw-accent focus:outline-none"
+              className="mt-1 w-full rounded border border-daw-border bg-daw-surface-2 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-daw-accent focus:outline-none"
               data-testid="voice-edit-tags"
             />
           </div>
