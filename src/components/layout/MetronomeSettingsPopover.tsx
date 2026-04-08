@@ -7,7 +7,7 @@ interface MetronomeSettingsPopoverProps {
 
 const SOUND_OPTIONS = [
   { id: 'click', label: 'Click' },
-  { id: 'woodblock', label: 'Wood' },
+  { id: 'woodblock', label: 'Woodblock' },
   { id: 'beep', label: 'Beep' },
 ] as const;
 

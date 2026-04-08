@@ -11,6 +11,7 @@ const mockSetMonitoring = vi.fn();
 const mockGetCountInLength = vi.fn().mockReturnValue('off');
 const mockGetSession = vi.fn().mockReturnValue(undefined);
 let mockHasPermission = false;
+const mockSetCountInLength = vi.fn();
 
 vi.mock('../../engine/RecordingEngine', () => ({
   recordingEngine: {
@@ -19,7 +20,7 @@ vi.mock('../../engine/RecordingEngine', () => ({
     stopAllRecordings: (...args: unknown[]) => mockStopAllRecordings(...args),
     setMonitoring: (...args: unknown[]) => mockSetMonitoring(...args),
     getCountInLength: () => mockGetCountInLength(),
-    setCountInLength: vi.fn(),
+    setCountInLength: (...args: unknown[]) => mockSetCountInLength(...args),
     getSession: (...args: unknown[]) => mockGetSession(...args),
     get hasPermission() { return mockHasPermission; },
     get denied() { return false; },
@@ -160,5 +161,37 @@ describe('useRecording', () => {
 
     expect(mockStopAllRecordings).toHaveBeenCalled();
     expect(result.current.isRecording).toBe(false);
+  });
+
+  describe('count-in sync', () => {
+    it('syncs countInBars=0 as off to recording engine', async () => {
+      const { result } = renderHook(() => useRecording());
+      act(() => {
+        useTransportStore.getState().armTrack('track-1');
+        useTransportStore.getState().setCountInBars(0);
+      });
+      await act(async () => { await result.current.toggleRecord(); });
+      expect(mockSetCountInLength).toHaveBeenCalledWith('off');
+    });
+
+    it('syncs countInBars=1 as 1bar to recording engine', async () => {
+      const { result } = renderHook(() => useRecording());
+      act(() => {
+        useTransportStore.getState().armTrack('track-1');
+        useTransportStore.getState().setCountInBars(1);
+      });
+      await act(async () => { await result.current.toggleRecord(); });
+      expect(mockSetCountInLength).toHaveBeenCalledWith('1bar');
+    });
+
+    it('syncs countInBars=2 as 2bars to recording engine', async () => {
+      const { result } = renderHook(() => useRecording());
+      act(() => {
+        useTransportStore.getState().armTrack('track-1');
+        useTransportStore.getState().setCountInBars(2);
+      });
+      await act(async () => { await result.current.toggleRecord(); });
+      expect(mockSetCountInLength).toHaveBeenCalledWith('2bars');
+    });
   });
 });
