@@ -11,7 +11,7 @@ import { useProjectStore } from '../../store/projectStore';
 import { loadAudioBlobByKey } from '../../services/audioFileManager';
 import { getExistingAudioEngine } from '../../hooks/useAudioEngine';
 import { computeAudioMetrics, formatLufs, formatDbLevel, formatDbRange } from '../../services/audioMetrics';
-import type { Clip } from '../../types/project';
+import type { Clip, Project } from '../../types/project';
 import type { AudioMetrics } from '../../types/clipInspector';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ function TagChip({ tag, onRemove }: { tag: string; onRemove?: () => void }) {
   );
 }
 
-function collectProjectTags(project: import('../../types/project').Project | null): string[] {
+function collectProjectTags(project: Project | null): string[] {
   if (!project) return [];
   const tagSet = new Set<string>();
   for (const track of project.tracks) {

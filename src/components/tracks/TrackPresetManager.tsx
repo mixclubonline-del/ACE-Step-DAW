@@ -90,6 +90,7 @@ function SavePresetForm() {
           <select
             value={effectiveTrackId}
             onChange={(e) => { setSelectedTrackId(e.target.value); setSaveError(''); }}
+            aria-label="Track to save preset from"
             className="text-[10px] bg-zinc-800 border border-zinc-700/50 rounded px-1 py-0.5 text-zinc-300 focus:outline-none focus:border-zinc-500"
           >
             {tracks.map((t) => (
@@ -105,6 +106,7 @@ function SavePresetForm() {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
           placeholder="Preset name..."
+          aria-label="Preset name"
           className="flex-1 px-1.5 py-0.5 text-[10px] bg-zinc-800/50 border border-zinc-700/50 rounded text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500/70"
         />
         <button
