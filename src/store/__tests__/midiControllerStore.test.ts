@@ -162,8 +162,8 @@ describe('midiControllerStore', () => {
   });
 
   describe('enabled state', () => {
-    it('starts enabled by default', () => {
-      expect(useMidiControllerStore.getState().enabled).toBe(true);
+    it('starts disabled by default (no auto-connect)', () => {
+      expect(useMidiControllerStore.getState().enabled).toBe(false);
     });
 
     it('can be toggled', () => {

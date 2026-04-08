@@ -54,8 +54,8 @@ describe('useMidiController', () => {
     expect(mockRegisterHandler).toHaveBeenCalledWith('transport', expect.any(Function));
   });
 
-  it('does not connect when disabled', () => {
-    useMidiControllerStore.setState({ enabled: false });
+  it('does not connect when disabled (default state)', () => {
+    // Default is enabled: false, so no connection without explicit enable
     renderHook(() => useMidiController());
 
     expect(mockConnect).not.toHaveBeenCalled();

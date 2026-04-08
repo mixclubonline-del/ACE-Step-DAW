@@ -4,7 +4,7 @@
  * When enabled, this hook:
  * 1. Connects WebMidiService on mount
  * 2. Routes incoming MIDI messages through the mapping engine
- * 3. Applies mapped values to projectStore (track volume/pan/mute/solo),
+ * 3. Applies mapped values to projectStore (track volume/mute/solo),
  *    transportStore, and master volume
  * 4. Handles MIDI Learn mode (auto-completes mapping on CC/NoteOn input)
  *
@@ -75,17 +75,15 @@ export function useMidiController(): void {
     engine.registerHandler('master', handleMasterParam);
     engine.registerHandler('transport', handleTransportParam);
 
-    // Connect if not already connected
-    if (!connectedRef.current) {
-      service.connect()
-        .then((devices) => {
-          useMidiControllerStore.getState().setDevices(devices);
-          connectedRef.current = true;
-        })
-        .catch(() => {
-          // Silently fail — panel will show error if user opens it
-        });
-    }
+    // Connect (idempotent) and refresh device list
+    service.connect()
+      .then((devices) => {
+        useMidiControllerStore.getState().setDevices(devices);
+        connectedRef.current = true;
+      })
+      .catch(() => {
+        // Silently fail — panel will show error if user opens it
+      });
 
     // Subscribe to device changes
     const unsubDevices = service.onDeviceChange((devices) => {

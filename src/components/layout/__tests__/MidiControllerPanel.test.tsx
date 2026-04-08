@@ -120,10 +120,10 @@ describe('MidiControllerPanel', () => {
   it('toggles enabled state', () => {
     useUIStore.setState({ showMidiControllerPanel: true });
     render(<MidiControllerPanel />);
-    const onBtn = screen.getByText('ON');
-    expect(useMidiControllerStore.getState().enabled).toBe(true);
-    fireEvent.click(onBtn);
+    const offBtn = screen.getByText('OFF');
     expect(useMidiControllerStore.getState().enabled).toBe(false);
+    fireEvent.click(offBtn);
+    expect(useMidiControllerStore.getState().enabled).toBe(true);
   });
 
   it('closes panel via close button', () => {

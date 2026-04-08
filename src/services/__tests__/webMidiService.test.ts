@@ -48,44 +48,39 @@ function createMockMIDIAccess(inputs: ReturnType<typeof createMockMIDIInput>[]) 
 
 describe('WebMidiService', () => {
   let service: WebMidiService;
+  let originalRequestMIDIAccess: typeof navigator.requestMIDIAccess;
 
   beforeEach(() => {
+    originalRequestMIDIAccess = navigator.requestMIDIAccess;
     service = new WebMidiService();
   });
 
   afterEach(() => {
     service.destroy();
+    Object.defineProperty(navigator, 'requestMIDIAccess', {
+      value: originalRequestMIDIAccess,
+      writable: true,
+      configurable: true,
+    });
   });
 
   describe('isSupported', () => {
     it('returns true when navigator.requestMIDIAccess exists', () => {
-      const orig = navigator.requestMIDIAccess;
       Object.defineProperty(navigator, 'requestMIDIAccess', {
         value: vi.fn(),
         writable: true,
         configurable: true,
       });
       expect(WebMidiService.isSupported()).toBe(true);
-      Object.defineProperty(navigator, 'requestMIDIAccess', {
-        value: orig,
-        writable: true,
-        configurable: true,
-      });
     });
 
     it('returns false when navigator.requestMIDIAccess is undefined', () => {
-      const orig = navigator.requestMIDIAccess;
       Object.defineProperty(navigator, 'requestMIDIAccess', {
         value: undefined,
         writable: true,
         configurable: true,
       });
       expect(WebMidiService.isSupported()).toBe(false);
-      Object.defineProperty(navigator, 'requestMIDIAccess', {
-        value: orig,
-        writable: true,
-        configurable: true,
-      });
     });
   });
 
@@ -120,7 +115,6 @@ describe('WebMidiService', () => {
     });
 
     it('throws when Web MIDI is not supported', async () => {
-      const orig = navigator.requestMIDIAccess;
       Object.defineProperty(navigator, 'requestMIDIAccess', {
         value: undefined,
         writable: true,
@@ -128,12 +122,6 @@ describe('WebMidiService', () => {
       });
 
       await expect(service.connect()).rejects.toThrow('Web MIDI API is not supported');
-
-      Object.defineProperty(navigator, 'requestMIDIAccess', {
-        value: orig,
-        writable: true,
-        configurable: true,
-      });
     });
   });
 

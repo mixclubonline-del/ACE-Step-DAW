@@ -7,9 +7,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { useMidiControllerStore } from '../../store/midiControllerStore';
-import { WebMidiService, getWebMidiService } from '../../services/webMidiService';
+import { WebMidiService } from '../../services/webMidiService';
 import { Z } from '../../utils/zIndex';
-import type { MidiMapping, MidiMessage } from '../../types/midiController';
+import type { MidiMapping } from '../../types/midiController';
 
 type Tab = 'devices' | 'mappings';
 
@@ -112,62 +112,23 @@ export function MidiControllerPanel() {
   const removeMapping = useMidiControllerStore((s) => s.removeMapping);
   const clearAllMappings = useMidiControllerStore((s) => s.clearAllMappings);
   const lastActivity = useMidiControllerStore((s) => s.lastActivity);
-  const setDevices = useMidiControllerStore((s) => s.setDevices);
-  const setLastActivity = useMidiControllerStore((s) => s.setLastActivity);
   const learnMode = useMidiControllerStore((s) => s.learnMode);
-  const completeLearnMode = useMidiControllerStore((s) => s.completeLearnMode);
   const exportMappings = useMidiControllerStore((s) => s.exportMappings);
   const importMappings = useMidiControllerStore((s) => s.importMappings);
 
   const [tab, setTab] = useState<Tab>('devices');
-  const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activityFlash, setActivityFlash] = useState(false);
 
-  // Connect to Web MIDI on first open
+  // Check Web MIDI support on open (connection is handled by useMidiController hook)
   useEffect(() => {
     if (!show) return;
     if (!WebMidiService.isSupported()) {
       setError('Web MIDI not supported in this browser.');
-      return;
+    } else {
+      setError(null);
     }
-
-    const service = getWebMidiService();
-    setIsConnecting(true);
-    setError(null);
-
-    service.connect()
-      .then((devs) => {
-        setDevices(devs);
-        setIsConnecting(false);
-      })
-      .catch((err: Error) => {
-        setError(err.message);
-        setIsConnecting(false);
-      });
-
-    const unsubDevices = service.onDeviceChange((devs) => {
-      setDevices(devs);
-    });
-
-    const unsubMessages = service.onMessage((msg: MidiMessage) => {
-      setLastActivity(msg);
-
-      // If MIDI Learn is active, complete the mapping on any CC or note message
-      if (useMidiControllerStore.getState().learnMode.active) {
-        if (msg.type === 'cc' || msg.type === 'noteOn') {
-          const controlType = msg.type === 'cc' ? 'cc' : 'note';
-          const device = useMidiControllerStore.getState().devices.find((d) => d.id === msg.deviceId);
-          completeLearnMode(msg.deviceId, device?.name ?? 'Unknown', msg.channel, controlType, msg.control);
-        }
-      }
-    });
-
-    return () => {
-      unsubDevices();
-      unsubMessages();
-    };
-  }, [show, setDevices, setLastActivity, completeLearnMode]);
+  }, [show]);
 
   // Flash activity dot briefly
   useEffect(() => {
@@ -284,12 +245,7 @@ export function MidiControllerPanel() {
       <div className="max-h-[420px] overflow-y-auto px-2 py-2">
         {tab === 'devices' && (
           <div className="flex flex-col gap-1">
-            {isConnecting && (
-              <div className="text-center text-[11px] text-zinc-400 py-4">
-                Connecting to MIDI devices...
-              </div>
-            )}
-            {!isConnecting && devices.length === 0 && (
+            {devices.length === 0 && (
               <div className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-[11px] text-zinc-400">
                 No MIDI devices detected. Connect a controller and refresh.
               </div>

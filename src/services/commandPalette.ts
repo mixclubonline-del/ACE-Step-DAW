@@ -978,6 +978,60 @@ export function buildCommandPaletteCommands(context: CommandPaletteContext): Com
     }
   }
 
+  // MIDI Controller commands
+  commands.push(
+    createTrackCommand(
+      'midi:toggle-panel',
+      'Toggle MIDI Controller Panel',
+      'MIDI',
+      'action',
+      ['midi', 'controller', 'device', 'hardware', 'panel'],
+      ['show midi controllers', 'hide midi panel', 'midi devices'],
+      async () => {
+        const { useUIStore } = await import('../store/uiStore');
+        const ui = useUIStore.getState();
+        ui.setShowMidiControllerPanel(!ui.showMidiControllerPanel);
+      },
+      undefined,
+      'Show/hide MIDI controller panel',
+    ),
+    createTrackCommand(
+      'midi:learn',
+      'MIDI Learn',
+      'MIDI',
+      'action',
+      ['midi', 'learn', 'map', 'assign', 'controller'],
+      ['midi learn mode', 'assign midi controller', 'map midi'],
+      async () => {
+        const { useMidiControllerStore } = await import('../store/midiControllerStore');
+        const { useUIStore } = await import('../store/uiStore');
+        const state = useMidiControllerStore.getState();
+        if (state.learnMode.active) {
+          state.cancelLearnMode();
+        } else {
+          useUIStore.getState().setShowMidiControllerPanel(true);
+          state.startLearnMode('', 'Select a parameter...');
+        }
+      },
+      undefined,
+      'Arm MIDI learn for next parameter',
+    ),
+    createTrackCommand(
+      'midi:clear-all',
+      'Clear All MIDI Mappings',
+      'MIDI',
+      'action',
+      ['midi', 'clear', 'reset', 'mappings', 'controller'],
+      ['remove all midi mappings', 'reset midi', 'clear controller assignments'],
+      async () => {
+        const { useMidiControllerStore } = await import('../store/midiControllerStore');
+        useMidiControllerStore.getState().clearAllMappings();
+      },
+      undefined,
+      'Remove all MIDI controller mappings',
+    ),
+  );
+
   return commands;
 }
 

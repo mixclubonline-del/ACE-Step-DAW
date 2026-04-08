@@ -74,7 +74,7 @@ const INITIAL_LEARN_STATE: MidiLearnState = {
 export const useMidiControllerStore = create<MidiControllerState>()(
   persist(
     (set, get) => ({
-      enabled: true,
+      enabled: false,
       devices: [],
       mappings: [],
       learnMode: { ...INITIAL_LEARN_STATE },
@@ -176,8 +176,26 @@ export const useMidiControllerStore = create<MidiControllerState>()(
         exportedAt: new Date().toISOString(),
       }),
 
-      importMappings: (preset) =>
-        set({ mappings: [...preset.mappings] }),
+      importMappings: (preset) => {
+        if (!preset || !Array.isArray(preset.mappings)) return;
+
+        // Validate and deduplicate incoming mappings
+        const seen = new Set<string>();
+        const validated = preset.mappings.filter((m) => {
+          if (!m || typeof m.id !== 'string' || typeof m.targetParam !== 'string') return false;
+          if (typeof m.controlNumber !== 'number' || typeof m.channel !== 'number') return false;
+          const key = `${m.deviceId}:${m.channel}:${m.controlType}:${m.controlNumber}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }).map((m) => ({
+          ...m,
+          min: typeof m.min === 'number' && isFinite(m.min) ? m.min : 0,
+          max: typeof m.max === 'number' && isFinite(m.max) ? m.max : 1,
+        }));
+
+        set({ mappings: validated });
+      },
     }),
     {
       name: 'ace-step-daw-midi-controller',

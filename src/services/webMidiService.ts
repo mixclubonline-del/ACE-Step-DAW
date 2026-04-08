@@ -24,10 +24,15 @@ export class WebMidiService {
     return typeof navigator !== 'undefined' && typeof navigator.requestMIDIAccess === 'function';
   }
 
-  /** Request MIDI access and start listening to all inputs. */
+  /** Request MIDI access and start listening to all inputs. Idempotent — safe to call multiple times. */
   async connect(): Promise<MidiDevice[]> {
     if (!WebMidiService.isSupported()) {
       throw new Error('Web MIDI API is not supported in this browser');
+    }
+
+    // Idempotent: if already connected, just return current devices
+    if (this.access) {
+      return this.getDevices();
     }
 
     this.access = await navigator.requestMIDIAccess({ sysex: false });
@@ -37,7 +42,7 @@ export class WebMidiService {
     return this.getDevices();
   }
 
-  /** Return the current list of connected MIDI input devices. */
+  /** Return the current list of MIDI input devices (connected and disconnected). */
   getDevices(): MidiDevice[] {
     if (!this.access) return [];
 
