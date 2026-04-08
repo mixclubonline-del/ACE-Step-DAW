@@ -6,6 +6,11 @@ import { useTransportStore } from '../../store/transportStore';
 import { regenerateClip } from '../../services/generationPipeline';
 import { ClipContextMenu } from './ClipContextMenu';
 
+/** Default grid size for groove extraction (16th note = 0.25 beats). */
+const DEFAULT_GROOVE_GRID_BEATS = 0.25;
+/** Default groove analysis length in beats (1 bar of 4/4). */
+const DEFAULT_GROOVE_LENGTH_BEATS = 4;
+
 interface ClipContextMenuContainerProps {
   x: number;
   y: number;
@@ -122,7 +127,13 @@ export function ClipContextMenuContainer({
       onExtractGroove={isMidiClip ? () => {
         onClose();
         const name = `Groove from ${track.displayName || track.trackName}`;
-        extractGrooveFromClip(clip.id, name, { gridBeats: 0.25, lengthBeats: 4 });
+        const gridBeats = clip.midiData?.grid
+          ? ({ '1/4': 1, '1/8': 0.5, '1/16': 0.25, '1/32': 0.125 }[clip.midiData.grid] ?? DEFAULT_GROOVE_GRID_BEATS)
+          : DEFAULT_GROOVE_GRID_BEATS;
+        const bpm = useProjectStore.getState().project?.bpm ?? 120;
+        const clipBeats = clip.duration * (bpm / 60);
+        const lengthBeats = clipBeats >= 1 ? Math.round(clipBeats) : DEFAULT_GROOVE_LENGTH_BEATS;
+        extractGrooveFromClip(clip.id, name, { gridBeats, lengthBeats });
       } : undefined}
       onEdit={() => {
         onClose();

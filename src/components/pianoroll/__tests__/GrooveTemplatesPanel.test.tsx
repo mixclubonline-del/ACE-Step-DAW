@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { GrooveTemplatesPanel } from '../GrooveTemplatesPanel';
 import { useProjectStore } from '../../../store/projectStore';
+import { useUIStore } from '../../../store/uiStore';
 import type { Project, GrooveTemplate } from '../../../types/project';
 
 function makeGroove(overrides: Partial<GrooveTemplate> = {}): GrooveTemplate {
@@ -39,6 +40,7 @@ function setupProject(groovePool: GrooveTemplate[] = []) {
 describe('GrooveTemplatesPanel', () => {
   beforeEach(() => {
     useProjectStore.setState({ project: null });
+    useUIStore.setState({ grooveStrength: 100 });
   });
 
   it('renders empty state when no grooves exist', () => {

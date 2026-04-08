@@ -88,11 +88,23 @@ describe('TrackPresetManager', () => {
     expect(applyTrackPreset).toHaveBeenCalledWith('p1');
   });
 
-  it('shows save preset form with track selector', () => {
+  it('shows save preset form with track selector when multiple tracks exist', () => {
     setupProject([]);
+    // Add a second track so the selector renders
+    const project = useProjectStore.getState().project!;
+    useProjectStore.setState({
+      project: {
+        ...project,
+        tracks: [
+          ...project.tracks,
+          { id: 'track-2', trackName: 'bass', displayName: 'Bass', color: '#00ff00', order: 1, volume: 0.8, muted: false, soloed: false, clips: [], effects: [], effectsEnabled: true },
+        ],
+      } as typeof project,
+    });
     render(<TrackPresetManager />);
     expect(screen.getByPlaceholderText(/preset name/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /save preset/i })).toBeTruthy();
+    expect(screen.getByRole('combobox')).toBeTruthy(); // track selector visible
   });
 
   it('calls saveTrackPreset with selected track and name', () => {

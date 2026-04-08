@@ -65,47 +65,60 @@ function SavePresetForm() {
   const saveTrackPreset = useProjectStore((s) => s.saveTrackPreset);
   const [selectedTrackId, setSelectedTrackId] = useState('');
 
-  // Default to first track
-  const effectiveTrackId = selectedTrackId || tracks[0]?.id || '';
+  const [saveError, setSaveError] = useState('');
+
+  // Prefer selected track only while it still exists; fall back to first track.
+  const hasSelectedTrack = tracks.some((t) => t.id === selectedTrackId);
+  const effectiveTrackId = (hasSelectedTrack ? selectedTrackId : tracks[0]?.id) || '';
 
   const handleSave = useCallback(() => {
     const trimmed = name.trim();
     if (!trimmed || !effectiveTrackId) return;
-    saveTrackPreset(effectiveTrackId, trimmed);
-    setName('');
+    setSaveError('');
+    try {
+      saveTrackPreset(effectiveTrackId, trimmed);
+      setName('');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Failed to save preset.');
+    }
   }, [name, effectiveTrackId, saveTrackPreset]);
 
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1.5">
-      {tracks.length > 1 && (
-        <select
-          value={effectiveTrackId}
-          onChange={(e) => setSelectedTrackId(e.target.value)}
-          className="text-[10px] bg-zinc-800 border border-zinc-700/50 rounded px-1 py-0.5 text-zinc-300 focus:outline-none focus:border-zinc-500"
+    <div className="px-2 py-1.5">
+      <div className="flex items-center gap-1.5">
+        {tracks.length > 1 && (
+          <select
+            value={effectiveTrackId}
+            onChange={(e) => { setSelectedTrackId(e.target.value); setSaveError(''); }}
+            className="text-[10px] bg-zinc-800 border border-zinc-700/50 rounded px-1 py-0.5 text-zinc-300 focus:outline-none focus:border-zinc-500"
+          >
+            {tracks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.displayName || t.trackName}
+              </option>
+            ))}
+          </select>
+        )}
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+          placeholder="Preset name..."
+          className="flex-1 px-1.5 py-0.5 text-[10px] bg-zinc-800/50 border border-zinc-700/50 rounded text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500/70"
+        />
+        <button
+          type="button"
+          onClick={handleSave}
+          className="text-[9px] px-2 py-0.5 rounded bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600/50 transition-colors"
+          aria-label="Save preset"
         >
-          {tracks.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.displayName || t.trackName}
-            </option>
-          ))}
-        </select>
+          Save
+        </button>
+      </div>
+      {saveError && (
+        <div className="mt-1 text-[9px] text-red-400" role="alert">{saveError}</div>
       )}
-      <input
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
-        placeholder="Preset name..."
-        className="flex-1 px-1.5 py-0.5 text-[10px] bg-zinc-800/50 border border-zinc-700/50 rounded text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500/70"
-      />
-      <button
-        type="button"
-        onClick={handleSave}
-        className="text-[9px] px-2 py-0.5 rounded bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600/50 transition-colors"
-        aria-label="Save preset"
-      >
-        Save
-      </button>
     </div>
   );
 }

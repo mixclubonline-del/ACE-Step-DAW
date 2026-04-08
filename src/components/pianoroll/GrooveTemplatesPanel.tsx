@@ -8,6 +8,7 @@
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useProjectStore } from '../../store/projectStore';
+import { useUIStore } from '../../store/uiStore';
 import type { GrooveTemplate } from '../../types/project';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -109,7 +110,8 @@ export function GrooveTemplatesPanel() {
   const groovePool = useProjectStore((s) => s.project?.groovePool ?? []);
   const deleteGrooveTemplate = useProjectStore((s) => s.deleteGrooveTemplate);
   const renameGrooveTemplate = useProjectStore((s) => s.renameGrooveTemplate);
-  const [strength, setStrength] = useState(100);
+  const strength = useUIStore((s) => s.grooveStrength);
+  const setStrength = useUIStore((s) => s.setGrooveStrength);
 
   return (
     <div className="flex flex-col h-full">

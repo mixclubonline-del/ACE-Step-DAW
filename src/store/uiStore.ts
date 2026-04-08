@@ -79,6 +79,7 @@ export interface UIState {
   recentCommandIds: string[];
   showUndoHistoryPanel: boolean;
   showTrackPresetManager: boolean;
+  grooveStrength: number;
   historyFocusScope: HistoryScope;
   historyFocusTrackId: string | null;
   historyFocusClipId: string | null;
@@ -319,6 +320,7 @@ export interface UIState {
   executeCommandPaletteCommand: (commandId: string) => Promise<boolean>;
   setShowUndoHistoryPanel: (v: boolean) => void;
   setShowTrackPresetManager: (v: boolean) => void;
+  setGrooveStrength: (v: number) => void;
   setHistoryFocusScope: (scope: HistoryScope, target?: HistoryTarget) => void;
   setShowMixer: (v: boolean) => void;
   setShowClipInspector: (v: boolean) => void;
@@ -659,6 +661,7 @@ export const useUIStore = create<UIState>()(
   recentCommandIds: [],
   showUndoHistoryPanel: false,
   showTrackPresetManager: false,
+  grooveStrength: 100,
   historyFocusScope: 'arrangement',
   historyFocusTrackId: null,
   historyFocusClipId: null,
@@ -991,6 +994,7 @@ export const useUIStore = create<UIState>()(
   },
   setShowUndoHistoryPanel: (v) => set({ showUndoHistoryPanel: v }),
   setShowTrackPresetManager: (v) => set({ showTrackPresetManager: v }),
+  setGrooveStrength: (v) => set({ grooveStrength: v }),
   setHistoryFocusScope: (scope, target) => set((state) => {
     const resolvedTrackId =
       target?.trackId

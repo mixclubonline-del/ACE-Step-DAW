@@ -134,7 +134,7 @@ function TagInput({ clipId, existingTags }: { clipId: string; existingTags: stri
         value={value}
         onChange={(e) => { setValue(e.target.value); setShowSuggestions(true); }}
         onKeyDown={handleKeyDown}
-        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+        onBlur={() => setShowSuggestions(false)}
         onFocus={() => { if (value.trim()) setShowSuggestions(true); }}
         placeholder="Add tag..."
         className="w-full px-1.5 py-0.5 text-[10px] bg-zinc-800/50 border border-zinc-700/50 rounded text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500/70"
@@ -146,6 +146,7 @@ function TagInput({ clipId, existingTags }: { clipId: string; existingTags: stri
               key={tag}
               type="button"
               data-testid="tag-suggestion"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleSuggestionClick(tag)}
               className="block w-full text-left px-2 py-1 text-[10px] text-zinc-300 hover:bg-zinc-700/50 transition-colors"
             >
