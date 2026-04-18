@@ -35,6 +35,8 @@ pub mod meter_bank;
 pub mod mixer;
 pub mod routing;
 pub mod slot;
+pub mod tempo_map;
+pub mod time_sig_map;
 pub mod transport;
 
 pub use command::{EngineCommand, TrackParams};
@@ -47,10 +49,14 @@ pub use meter::{generate_sine, Meter, MeterReading};
 pub use meter_bank::{MeterConsumers, MeterProducers};
 pub use mixer::{equal_power_pan, is_audible};
 pub use slot::{SlotAllocator, SlotHandle};
+pub use tempo_map::{TempoEvent, TempoMap, TempoMapError};
+pub use time_sig_map::{TimeSignatureEvent, TimeSignatureMap, TimeSignatureMapError};
 pub use transport::{SharedPosition, Transport, TransportState, DEFAULT_BPM, MAX_BPM, MIN_BPM};
 
+use arc_swap::ArcSwap;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use serde::Serialize;
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -139,6 +145,15 @@ pub enum CommandError {
     Disconnected,
     #[error("track slot allocator is full (capacity {0}); cannot add more tracks")]
     SlotAllocatorFull(usize),
+    /// Caller sent a tempo-map payload that violated the map invariants
+    /// (empty, unsorted, duplicated positions, or missing the sample-0
+    /// anchor). The payload is rejected before reaching the audio
+    /// thread — no partial update.
+    #[error("invalid tempo map: {0}")]
+    InvalidTempoMap(String),
+    /// Same as `InvalidTempoMap` but for the time-signature map.
+    #[error("invalid time signature map: {0}")]
+    InvalidTimeSignatureMap(String),
 }
 
 /// Contract for the function that owns a CPAL stream.
@@ -188,6 +203,15 @@ struct RunningEngine {
     /// Cloned from the audio thread's `Transport` at startup; lets
     /// position reads bypass the command queue entirely.
     shared_position: SharedPosition,
+    /// Main-thread handle on the transport's tempo map. Mutations
+    /// happen via `.store(Arc::new(...))` and are visible to the
+    /// audio callback on its next `.load()` — no command round-trip.
+    tempo_map: Arc<ArcSwap<TempoMap>>,
+    /// Same pattern for time signature.
+    time_sig_map: Arc<ArcSwap<TimeSignatureMap>>,
+    /// Active sample rate — cached so beat↔sample conversion can
+    /// run without re-parsing `EngineStatus`.
+    sample_rate: u32,
 }
 
 impl RunningEngine {
@@ -259,6 +283,8 @@ impl Engine {
             meter_bank::create_meter_pair(config.sample_rate as f32);
         let transport = Transport::new();
         let shared_position = transport.shared_position();
+        let tempo_map_handle = transport.tempo_map_handle();
+        let time_sig_map_handle = transport.time_sig_map_handle();
 
         let ctx = RuntimeContext {
             config: config.clone(),
@@ -282,6 +308,13 @@ impl Engine {
 
         match ready_rx.recv_timeout(OPEN_TIMEOUT) {
             Ok(Ok(info)) => {
+                // Use the ACTIVE sample rate reported by the audio
+                // thread, not the requested config. CPAL is allowed
+                // to fall back (e.g. device doesn't support the
+                // requested rate) — if we cached the requested value,
+                // beat↔sample conversions would drift silently.
+                // Found by Copilot review on PR #1711.
+                let active_sample_rate = info.active_config.sample_rate;
                 let status = EngineStatus::Running {
                     active_config: info.active_config,
                     device_name: info.device_name,
@@ -295,6 +328,9 @@ impl Engine {
                     thread: Some(thread),
                     status: status.clone(),
                     shared_position,
+                    tempo_map: tempo_map_handle,
+                    time_sig_map: time_sig_map_handle,
+                    sample_rate: active_sample_rate,
                 });
                 Ok(status)
             }
@@ -425,9 +461,24 @@ impl Engine {
         self.send_command(EngineCommand::TransportSeek { sample_position })
     }
 
-    /// Set the transport tempo. Clamped on the audio thread.
+    /// Set a constant tempo by publishing a single-event map via
+    /// the same `ArcSwap` channel that [`set_tempo_map`] uses.
+    /// Returns `Err(NotRunning)` if the engine is stopped.
+    ///
+    /// **Ordering**: `set_tempo` and `set_tempo_map` now share one
+    /// publication channel, so a later call unambiguously wins —
+    /// there is no race where a queued `set_tempo` could arrive
+    /// after a later `set_tempo_map` and clobber it. Found by codex
+    /// review on PR #1711 (P1): prior version routed `set_tempo`
+    /// through the audio-thread command queue while `set_tempo_map`
+    /// wrote the `ArcSwap` immediately, creating two uncoordinated
+    /// write paths.
     pub fn transport_set_tempo(&self, bpm: f32) -> Result<(), CommandError> {
-        self.send_command(EngineCommand::TransportSetTempo { bpm })
+        let running = self.running.as_ref().ok_or(CommandError::NotRunning)?;
+        running
+            .tempo_map
+            .store(Arc::new(TempoMap::new_constant(bpm)));
+        Ok(())
     }
 
     /// Snapshot the current transport sample position. Reads the
@@ -439,6 +490,63 @@ impl Engine {
             .as_ref()
             .map(|r| r.shared_position.get())
             .unwrap_or(0)
+    }
+
+    // ── Transport tempo / time-signature maps (3B) ──────────────────
+
+    /// Replace the full tempo map atomically. Validates the payload
+    /// via [`TempoMap::try_new`] before publishing — an invalid map
+    /// never reaches the audio thread.
+    pub fn set_tempo_map(&self, events: Vec<TempoEvent>) -> Result<(), CommandError> {
+        let running = self.running.as_ref().ok_or(CommandError::NotRunning)?;
+        let map = TempoMap::try_new(events)
+            .map_err(|e| CommandError::InvalidTempoMap(format!("{e:?}")))?;
+        running.tempo_map.store(Arc::new(map));
+        Ok(())
+    }
+
+    /// Snapshot the current tempo map. Returns `None` when the
+    /// engine is stopped. Cheap — `.load_full()` is wait-free and
+    /// produces a reference-counted `Arc<TempoMap>`.
+    pub fn tempo_map_snapshot(&self) -> Option<Arc<TempoMap>> {
+        self.running.as_ref().map(|r| r.tempo_map.load_full())
+    }
+
+    /// Replace the full time-signature map atomically. Validated
+    /// the same way as [`set_tempo_map`].
+    pub fn set_time_signature_map(
+        &self,
+        events: Vec<TimeSignatureEvent>,
+    ) -> Result<(), CommandError> {
+        let running = self.running.as_ref().ok_or(CommandError::NotRunning)?;
+        let map = TimeSignatureMap::try_new(events)
+            .map_err(|e| CommandError::InvalidTimeSignatureMap(format!("{e:?}")))?;
+        running.time_sig_map.store(Arc::new(map));
+        Ok(())
+    }
+
+    /// Snapshot the current time-signature map.
+    pub fn time_signature_map_snapshot(&self) -> Option<Arc<TimeSignatureMap>> {
+        self.running.as_ref().map(|r| r.time_sig_map.load_full())
+    }
+
+    /// Convert a fractional beat count to a sample position using
+    /// the current tempo map and sample rate. Returns 0 when the
+    /// engine is stopped (no sample rate available).
+    pub fn beat_to_sample(&self, beat: f64) -> u64 {
+        match self.running.as_ref() {
+            Some(r) => r.tempo_map.load().beat_to_sample(beat, r.sample_rate),
+            None => 0,
+        }
+    }
+
+    /// Convert an absolute sample position to a fractional beat
+    /// count using the current tempo map. Returns 0 when stopped.
+    pub fn sample_to_beat(&self, sample: u64) -> f64 {
+        match self.running.as_ref() {
+            Some(r) => r.tempo_map.load().sample_to_beat(sample, r.sample_rate),
+            None => 0.0,
+        }
     }
 
     /// Read the latest meter reading for a track.
@@ -1115,7 +1223,9 @@ mod tests {
             EngineCommand::TransportStop => transport.stop(),
             EngineCommand::TransportPause => transport.pause(),
             EngineCommand::TransportSeek { sample_position } => transport.seek(sample_position),
-            EngineCommand::TransportSetTempo { bpm } => transport.set_tempo(bpm),
+            // TransportSetTempo was removed in 3B — tempo now flows
+            // through the ArcSwap<TempoMap> on the main thread, not
+            // the command queue.
             _ => {}
         }
     }
@@ -1145,25 +1255,34 @@ mod tests {
 
         engine.transport_play().unwrap();
         engine.transport_seek(48_000).unwrap();
+        // transport_set_tempo in 3B writes ArcSwap directly — not the
+        // command queue — so it is NOT counted among the drained
+        // commands here. It is covered by the 3B ArcSwap tests instead.
         engine.transport_set_tempo(140.0).unwrap();
         engine.transport_pause().unwrap();
         engine.transport_stop().unwrap();
 
+        // Observe the set_tempo effect on the ArcSwap map BEFORE
+        // stopping the engine — tempo_map_snapshot returns None
+        // once the engine is stopped (handle-to-RunningEngine).
+        let snap = engine.tempo_map_snapshot().unwrap();
+        assert_eq!(snap.events()[0].bpm, 140.0);
+
         engine.stop();
 
         let got = drained.lock().unwrap();
-        assert_eq!(got.len(), 5, "five transport commands should have arrived");
+        assert_eq!(
+            got.len(),
+            4,
+            "four transport commands should have arrived (set_tempo bypasses queue)"
+        );
         assert!(matches!(got[0], EngineCommand::TransportPlay));
         assert!(matches!(
             got[1],
             EngineCommand::TransportSeek { sample_position: 48_000 }
         ));
-        assert!(matches!(
-            got[2],
-            EngineCommand::TransportSetTempo { bpm } if (bpm - 140.0).abs() < f32::EPSILON
-        ));
-        assert!(matches!(got[3], EngineCommand::TransportPause));
-        assert!(matches!(got[4], EngineCommand::TransportStop));
+        assert!(matches!(got[2], EngineCommand::TransportPause));
+        assert!(matches!(got[3], EngineCommand::TransportStop));
     }
 
     #[test]
@@ -1197,6 +1316,185 @@ mod tests {
     fn transport_position_returns_zero_when_engine_stopped() {
         let engine = Engine::new();
         assert_eq!(engine.transport_position(), 0);
+    }
+
+    // ── 3B: tempo / time-signature map via Engine ──────────────────
+
+    #[test]
+    fn tempo_map_before_start_fails_with_not_running() {
+        let engine = Engine::new();
+        assert_eq!(
+            engine.set_tempo_map(vec![TempoEvent::new(0, 120.0)]),
+            Err(CommandError::NotRunning)
+        );
+        assert!(engine.tempo_map_snapshot().is_none());
+    }
+
+    #[test]
+    fn set_tempo_map_rejects_invalid_events() {
+        let mut engine = Engine::new();
+        engine
+            .start_with(
+                EngineConfig::default_48k(),
+                fake_runner(
+                    Ok(ok_info()),
+                    Arc::new(AtomicBool::new(false)),
+                    Arc::new(AtomicBool::new(false)),
+                ),
+            )
+            .unwrap();
+
+        // Empty → error.
+        match engine.set_tempo_map(vec![]) {
+            Err(CommandError::InvalidTempoMap(msg)) => {
+                assert!(msg.contains("Empty"), "unexpected message: {msg}");
+            }
+            other => panic!("expected InvalidTempoMap(Empty), got {other:?}"),
+        }
+
+        // Missing anchor → error.
+        match engine.set_tempo_map(vec![TempoEvent::new(48_000, 120.0)]) {
+            Err(CommandError::InvalidTempoMap(msg)) => {
+                assert!(msg.contains("Missing"), "unexpected message: {msg}");
+            }
+            other => panic!("expected InvalidTempoMap(MissingAnchor), got {other:?}"),
+        }
+
+        engine.stop();
+    }
+
+    #[test]
+    fn set_tempo_map_publishes_multi_point_automation() {
+        let mut engine = Engine::new();
+        engine
+            .start_with(
+                EngineConfig::default_48k(),
+                fake_runner(
+                    Ok(ok_info()),
+                    Arc::new(AtomicBool::new(false)),
+                    Arc::new(AtomicBool::new(false)),
+                ),
+            )
+            .unwrap();
+
+        engine
+            .set_tempo_map(vec![
+                TempoEvent::new(0, 60.0),
+                TempoEvent::new(48_000, 120.0),
+            ])
+            .unwrap();
+
+        let snap = engine.tempo_map_snapshot().unwrap();
+        assert_eq!(snap.events().len(), 2);
+        assert_eq!(snap.events()[1].bpm, 120.0);
+
+        // beat_to_sample uses the published map + active sample rate.
+        // 1 beat at 60 BPM = 1 s = 48_000 samples at 48 kHz.
+        assert_eq!(engine.beat_to_sample(1.0), 48_000);
+        // 3 beats: 1 beat at 60 BPM + 2 beats at 120 BPM = 1 s + 1 s = 96_000.
+        assert_eq!(engine.beat_to_sample(3.0), 96_000);
+
+        // Round trip.
+        let s = engine.beat_to_sample(2.5);
+        let b = engine.sample_to_beat(s);
+        assert!((b - 2.5).abs() < 1e-3, "round trip drifted: {b}");
+
+        engine.stop();
+    }
+
+    #[test]
+    fn time_signature_map_round_trip_through_engine() {
+        let mut engine = Engine::new();
+        engine
+            .start_with(
+                EngineConfig::default_48k(),
+                fake_runner(
+                    Ok(ok_info()),
+                    Arc::new(AtomicBool::new(false)),
+                    Arc::new(AtomicBool::new(false)),
+                ),
+            )
+            .unwrap();
+
+        // Default is 4/4.
+        let default_snap = engine.time_signature_map_snapshot().unwrap();
+        assert_eq!(default_snap.signature_at(0), (4, 4));
+
+        engine
+            .set_time_signature_map(vec![
+                TimeSignatureEvent::new(0, 4, 4),
+                TimeSignatureEvent::new(96_000, 3, 4),
+            ])
+            .unwrap();
+
+        let snap = engine.time_signature_map_snapshot().unwrap();
+        assert_eq!(snap.signature_at(0), (4, 4));
+        assert_eq!(snap.signature_at(96_000), (3, 4));
+
+        engine.stop();
+    }
+
+    #[test]
+    fn transport_set_tempo_and_set_tempo_map_share_ordering_domain() {
+        // Regression for codex P1 finding on PR #1711: before the
+        // fix, `transport_set_tempo` routed through the audio-thread
+        // command queue while `set_tempo_map` wrote the ArcSwap
+        // directly. A later `set_tempo_map` could arrive BEFORE an
+        // earlier `set_tempo` because the queue path was slower,
+        // and the later call would be silently clobbered.
+        //
+        // After the fix, both paths write the same ArcSwap, so a
+        // later call always wins from the main thread's linearized
+        // view. Synchronously verify by issuing a set_tempo and
+        // reading back immediately.
+        let mut engine = Engine::new();
+        engine
+            .start_with(
+                EngineConfig::default_48k(),
+                fake_runner(
+                    Ok(ok_info()),
+                    Arc::new(AtomicBool::new(false)),
+                    Arc::new(AtomicBool::new(false)),
+                ),
+            )
+            .unwrap();
+
+        // Multi-point automation first.
+        engine
+            .set_tempo_map(vec![
+                TempoEvent::new(0, 60.0),
+                TempoEvent::new(48_000, 120.0),
+            ])
+            .unwrap();
+
+        // A set_tempo AFTER that must be IMMEDIATELY visible (no
+        // queue round-trip), replacing the automation with a
+        // constant 90.
+        engine.transport_set_tempo(90.0).unwrap();
+        let snap = engine.tempo_map_snapshot().unwrap();
+        assert_eq!(snap.events().len(), 1, "set_tempo should reduce the map to a single event");
+        assert_eq!(snap.events()[0].bpm, 90.0);
+
+        // And the reverse: a set_tempo_map AFTER a set_tempo wins.
+        engine.transport_set_tempo(100.0).unwrap();
+        engine
+            .set_tempo_map(vec![
+                TempoEvent::new(0, 77.0),
+                TempoEvent::new(96_000, 133.0),
+            ])
+            .unwrap();
+        let snap = engine.tempo_map_snapshot().unwrap();
+        assert_eq!(snap.events().len(), 2);
+        assert_eq!(snap.events()[0].bpm, 77.0);
+
+        engine.stop();
+    }
+
+    #[test]
+    fn beat_sample_conversions_return_zero_when_stopped() {
+        let engine = Engine::new();
+        assert_eq!(engine.beat_to_sample(10.0), 0);
+        assert_eq!(engine.sample_to_beat(48_000), 0.0);
     }
 
     #[test]
