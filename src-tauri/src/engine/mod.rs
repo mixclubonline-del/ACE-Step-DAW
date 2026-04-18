@@ -29,6 +29,7 @@ pub mod audio_io;
 pub mod clip;
 pub mod command;
 pub mod config;
+pub mod count_in;
 pub mod effect_chain;
 pub mod graph;
 pub mod loop_region;
@@ -37,6 +38,7 @@ pub mod meter_bank;
 pub mod metronome;
 pub mod mixer;
 pub mod position_emitter;
+pub mod punch_region;
 pub mod routing;
 pub mod slot;
 pub mod tempo_map;
@@ -50,8 +52,10 @@ pub use config::{
 };
 pub use graph::{AudioGraph, Track, MAX_TRACKS};
 pub use clip::{ClipSchedule, ClipScheduleError, ClipSource, MAX_CLIPS};
+pub use count_in::{CountIn, CountInState, MAX_COUNT_IN_BEATS, MIN_COUNT_IN_BEATS};
 pub use loop_region::LoopRegion;
 pub use metronome::MetronomeConfig;
+pub use punch_region::PunchRegion;
 pub use position_emitter::{PositionEmitter, DEFAULT_INTERVAL as POSITION_EVENT_DEFAULT_INTERVAL};
 pub use meter::{generate_sine, Meter, MeterReading};
 pub use meter_bank::{MeterConsumers, MeterProducers};
@@ -227,6 +231,10 @@ struct RunningEngine {
     metronome_config: Arc<ArcSwap<MetronomeConfig>>,
     /// Same pattern for the clip schedule.
     clip_schedule: Arc<ArcSwap<ClipSchedule>>,
+    /// Same pattern for the punch (record-arm) region.
+    punch_region: Arc<ArcSwap<PunchRegion>>,
+    /// Same pattern for the count-in config.
+    count_in: Arc<ArcSwap<CountIn>>,
     /// Main-thread-owned ring buffer of recently-retired clip
     /// schedules. Each `set_clip_schedule` pushes the old Arc onto
     /// this queue and pops the oldest when the queue grows past
@@ -323,6 +331,8 @@ impl Engine {
         let loop_region_handle = transport.loop_region_handle();
         let metronome_config_handle = transport.metronome_config_handle();
         let clip_schedule_handle = transport.clip_schedule_handle();
+        let punch_region_handle = transport.punch_region_handle();
+        let count_in_handle = transport.count_in_handle();
 
         let ctx = RuntimeContext {
             config: config.clone(),
@@ -371,6 +381,8 @@ impl Engine {
                     loop_region: loop_region_handle,
                     metronome_config: metronome_config_handle,
                     clip_schedule: clip_schedule_handle,
+                    punch_region: punch_region_handle,
+                    count_in: count_in_handle,
                     clip_schedule_graveyard: std::sync::Mutex::new(
                         std::collections::VecDeque::with_capacity(
                             CLIP_SCHEDULE_GRAVEYARD_SIZE,
@@ -505,6 +517,14 @@ impl Engine {
     /// Jump the transport to an absolute sample position.
     pub fn transport_seek(&self, sample_position: u64) -> Result<(), CommandError> {
         self.send_command(EngineCommand::TransportSeek { sample_position })
+    }
+
+    /// Scrub: move the playhead by a signed delta and put the
+    /// transport in `Scrubbing` state. The audio callback won't
+    /// auto-advance while in Scrubbing, so this is the only way
+    /// the playhead moves during a scrub session.
+    pub fn transport_scrub(&self, delta_samples: i64) -> Result<(), CommandError> {
+        self.send_command(EngineCommand::TransportScrub { delta_samples })
     }
 
     /// Set a constant tempo by publishing a single-event map via
@@ -719,6 +739,44 @@ impl Engine {
     /// refcounted handle.
     pub fn clip_schedule_snapshot(&self) -> Option<Arc<ClipSchedule>> {
         self.running.as_ref().map(|r| r.clip_schedule.load_full())
+    }
+
+    // ── Punch region (3G) ──────────────────────────────────────────
+
+    /// Replace the punch region atomically. Malformed ranges
+    /// (`end <= start`) are accepted but silently treated as
+    /// disabled on the audio thread (matches LoopRegion).
+    pub fn set_punch_region(&self, region: PunchRegion) -> Result<(), CommandError> {
+        let running = self.running.as_ref().ok_or(CommandError::NotRunning)?;
+        running.punch_region.store(Arc::new(region));
+        Ok(())
+    }
+
+    pub fn punch_region_snapshot(&self) -> Option<PunchRegion> {
+        self.running.as_ref().map(|r| **r.punch_region.load())
+    }
+
+    pub fn set_punch_enabled(&self, enabled: bool) -> Result<(), CommandError> {
+        let running = self.running.as_ref().ok_or(CommandError::NotRunning)?;
+        let mut p = **running.punch_region.load();
+        p.enabled = enabled;
+        running.punch_region.store(Arc::new(p));
+        Ok(())
+    }
+
+    // ── Count-in (3G) ──────────────────────────────────────────────
+
+    /// Replace the count-in config atomically. Beats are clamped
+    /// to `[MIN, MAX]` on construction to prevent absurd values.
+    pub fn set_count_in(&self, config: CountIn) -> Result<(), CommandError> {
+        let running = self.running.as_ref().ok_or(CommandError::NotRunning)?;
+        let normalized = CountIn::new(config.enabled, config.beats);
+        running.count_in.store(Arc::new(normalized));
+        Ok(())
+    }
+
+    pub fn count_in_snapshot(&self) -> Option<CountIn> {
+        self.running.as_ref().map(|r| **r.count_in.load())
     }
 
     /// Read the latest meter reading for a track.
@@ -1602,6 +1660,103 @@ mod tests {
         let snap = engine.time_signature_map_snapshot().unwrap();
         assert_eq!(snap.signature_at(0), (4, 4));
         assert_eq!(snap.signature_at(96_000), (3, 4));
+
+        engine.stop();
+    }
+
+    // ── 3G: scrub + count-in integration ────────────────────────────
+
+    #[test]
+    fn transport_scrub_flows_through_command_queue() {
+        let mut engine = Engine::new();
+        let drained = Arc::new(Mutex::new(Vec::new()));
+        let drain_started = Arc::new(AtomicBool::new(false));
+        engine
+            .start_with(
+                EngineConfig::default_48k(),
+                transport_runner(drained.clone(), drain_started.clone()),
+            )
+            .unwrap();
+        wait_for(|| drain_started.load(Ordering::SeqCst));
+
+        engine.transport_seek(1000).unwrap();
+        engine.transport_scrub(500).unwrap();
+        engine.transport_scrub(-200).unwrap();
+
+        engine.stop();
+
+        let got = drained.lock().unwrap();
+        assert!(
+            got.iter().any(|c| matches!(
+                c,
+                EngineCommand::TransportScrub { delta_samples: 500 }
+            )),
+            "expected TransportScrub +500 in drained commands"
+        );
+        assert!(
+            got.iter().any(|c| matches!(
+                c,
+                EngineCommand::TransportScrub { delta_samples: -200 }
+            )),
+            "expected TransportScrub -200 in drained commands"
+        );
+    }
+
+    #[test]
+    fn punch_region_before_start_fails_with_not_running() {
+        let engine = Engine::new();
+        assert_eq!(
+            engine.set_punch_region(PunchRegion {
+                enabled: true,
+                start: 0,
+                end: 1000,
+            }),
+            Err(CommandError::NotRunning)
+        );
+        assert!(engine.punch_region_snapshot().is_none());
+    }
+
+    #[test]
+    fn count_in_before_start_fails_with_not_running() {
+        let engine = Engine::new();
+        assert_eq!(
+            engine.set_count_in(CountIn::new(true, 4)),
+            Err(CommandError::NotRunning)
+        );
+        assert!(engine.count_in_snapshot().is_none());
+    }
+
+    #[test]
+    fn punch_and_count_in_round_trip_through_engine() {
+        let mut engine = Engine::new();
+        engine
+            .start_with(
+                EngineConfig::default_48k(),
+                fake_runner(
+                    Ok(ok_info()),
+                    Arc::new(AtomicBool::new(false)),
+                    Arc::new(AtomicBool::new(false)),
+                ),
+            )
+            .unwrap();
+
+        let punch = PunchRegion {
+            enabled: true,
+            start: 48_000,
+            end: 192_000,
+        };
+        engine.set_punch_region(punch).unwrap();
+        assert_eq!(engine.punch_region_snapshot().unwrap(), punch);
+        engine.set_punch_enabled(false).unwrap();
+        assert!(!engine.punch_region_snapshot().unwrap().enabled);
+
+        let ci = CountIn::new(true, 8);
+        engine.set_count_in(ci).unwrap();
+        assert_eq!(engine.count_in_snapshot().unwrap(), ci);
+
+        // set_count_in normalizes — beats=99 clamps to MAX (16).
+        engine.set_count_in(CountIn::new(true, 99)).unwrap();
+        assert_eq!(engine.count_in_snapshot().unwrap().beats, 16);
 
         engine.stop();
     }
