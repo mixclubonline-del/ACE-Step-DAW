@@ -29,6 +29,7 @@ use super::config::{AudioDeviceInfo, VALID_SAMPLE_RATES};
 use super::graph::AudioGraph;
 use super::meter::generate_sine;
 use super::meter_bank::MeterProducers;
+use super::clip::render_clip_segment;
 use super::metronome::{render_metronome_segment, ClickGenerator};
 use super::mixer;
 use super::transport::Transport;
@@ -463,6 +464,78 @@ fn make_audio_callback(
 
         // Mix aux return buses into master BEFORE master volume.
         routing.mix_into_master(&mut master_l[..frames], &mut master_r[..frames], frames);
+
+        // Clip scheduler render (3F). Reads a borrowed guard from
+        // the ArcSwap so no Arc clone / drop on the audio thread.
+        // Each clip is bounds-checked (`intersects_buffer`) before
+        // any PCM access to cap per-buffer cost at O(N) comparisons
+        // even when most clips are outside the current buffer
+        // window.
+        //
+        // Handles multiple loop wraps per buffer: if `frames > loop.length`,
+        // we iterate rendering one segment at a time, advancing the
+        // "virtual playhead" past each wrap, until we've covered the
+        // whole buffer. Rare (requires loop shorter than audio
+        // buffer — 5-85 ms at typical sample rates) but still needs
+        // to be correct. Found by codex review on PR #1719.
+        if transport.state().is_advancing() {
+            let clip_schedule_guard = transport.clip_schedule_handle().load();
+            let clip_schedule: &super::clip::ClipSchedule = &clip_schedule_guard;
+            if !clip_schedule.is_empty() {
+                let loop_region = **transport.loop_region_handle().load();
+                let playhead_start = transport.position();
+                let clips = clip_schedule.clips();
+
+                // Walk the buffer segment-by-segment. `buffer_offset`
+                // is where the next segment will start in the
+                // master output, `virt_playhead` is the absolute
+                // transport sample at that offset.
+                let mut buffer_offset: usize = 0;
+                let mut virt_playhead: u64 = playhead_start;
+
+                while buffer_offset < frames {
+                    // How many samples until either end of buffer
+                    // or the next loop-end wrap?
+                    let remaining = (frames - buffer_offset) as u64;
+                    let to_wrap: Option<u64> = if loop_region.is_active()
+                        && virt_playhead < loop_region.end
+                    {
+                        Some(loop_region.end - virt_playhead)
+                    } else {
+                        None
+                    };
+                    let seg_len = match to_wrap {
+                        Some(dist) if dist < remaining => dist,
+                        _ => remaining,
+                    } as usize;
+                    let seg_end_offset = buffer_offset + seg_len;
+
+                    // Render every intersecting clip into this segment.
+                    let seg_end_abs = virt_playhead.saturating_add(seg_len as u64);
+                    for clip in clips {
+                        if clip.intersects_buffer(virt_playhead, seg_end_abs) {
+                            render_clip_segment(
+                                clip,
+                                &mut master_l[..frames],
+                                &mut master_r[..frames],
+                                buffer_offset,
+                                seg_end_offset,
+                                virt_playhead,
+                            );
+                        }
+                    }
+
+                    // Advance the virtual playhead — wrap if we just
+                    // finished a wrap segment, otherwise linear.
+                    if to_wrap.map_or(false, |dist| (dist as usize) == seg_len) {
+                        virt_playhead = loop_region.start;
+                    } else {
+                        virt_playhead = seg_end_abs;
+                    }
+                    buffer_offset = seg_end_offset;
+                }
+            }
+        }
 
         // Metronome render (3E). Runs AFTER track/aux mixing but
         // BEFORE master volume so the click respects master gain
