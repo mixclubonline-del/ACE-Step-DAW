@@ -1,29 +1,13 @@
 /**
  * Offline-rendering helpers — produce AudioBuffers for MIDI / sampler
- * / sequencer tracks via `OfflineAudioContext`.
- *
- * Phase 5N: `renderSequencerTrackOffline` migrated to native
- * `OfflineAudioContext` (DrumEngine is fully native now). The MIDI
- * render still uses `Tone.Offline` — 5L handles that migration once
- * `createSynthForPreset` takes an explicit ctx.
+ * / sequencer tracks via native `OfflineAudioContext`. Phase 5P:
+ * every render path is fully native; Tone imports and the
+ * `toAudioBuffer` Tone→native unwrapper are gone.
  */
-import * as Tone from 'tone';
-import type { ToneAudioBuffer } from 'tone';
 import { createDrumVoicesForKit } from './DrumEngine';
 import { createSynthForPreset } from './SynthEngine';
 import { midiToFrequency } from '../utils/pitch';
 import type { DrumKitName, MidiNote, SamplerConfig, SequencerPattern, SynthPreset } from '../types/project';
-
-function toAudioBuffer(buffer: ToneAudioBuffer | AudioBuffer): AudioBuffer {
-  if (buffer instanceof AudioBuffer) {
-    return buffer;
-  }
-  const nativeBuffer = buffer.get();
-  if (!nativeBuffer) {
-    throw new Error('Offline render returned no AudioBuffer');
-  }
-  return nativeBuffer;
-}
 
 const DRUM_PAD_INDEX_BY_SAMPLE_KEY: Record<string, number> = {
   kick: 0,
@@ -168,7 +152,14 @@ export async function renderSequencerTrackOffline(
 
   const voices: ReturnType<typeof createDrumVoicesForKit> = [];
   try {
-    const kitVoices = createDrumVoicesForKit(drumKit, masterGain);
+    // Pass the offline ctx so drum voices are built against the
+    // same context as `masterGain`; otherwise cross-context
+    // connect() throws.
+    const kitVoices = createDrumVoicesForKit(
+      drumKit,
+      masterGain,
+      offlineCtx as unknown as AudioContext,
+    );
     voices.push(...kitVoices);
 
     const totalSteps = pattern.stepsPerBar * pattern.bars;
