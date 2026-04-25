@@ -8,11 +8,21 @@
  * this effectively disables the server-path optimisation and forces blob upload
  * — which is correct and avoids the 400 error in multi-stem generation (#1702).
  */
+
+function isAbsoluteServerPath(p: string): boolean {
+  return (
+    p.startsWith('/') ||
+    p.startsWith('\\\\') ||
+    p.startsWith('//') ||
+    /^[A-Za-z]:[/\\]/.test(p)
+  );
+}
+
 export function extractServerPath(audioPath: string): string | null {
   try {
     const url = new URL(audioPath, 'http://localhost');
     const p = url.searchParams.get('path');
-    if (p && !p.startsWith('/')) return p;
+    if (p && !isAbsoluteServerPath(p)) return p;
   } catch {
     // not a valid URL — fall through
   }

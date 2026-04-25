@@ -39,4 +39,14 @@ describe('extractServerPath', () => {
   it('returns null for blob URLs', () => {
     expect(extractServerPath('blob:http://localhost/abc-123')).toBeNull();
   });
+
+  it('returns null for Windows absolute paths in query param', () => {
+    expect(extractServerPath('/v1/audio?path=C:\\tmp\\output.wav')).toBeNull();
+    expect(extractServerPath('/v1/audio?path=D:/users/audio/stem.wav')).toBeNull();
+  });
+
+  it('returns null for UNC paths in query param', () => {
+    expect(extractServerPath('/v1/audio?path=\\\\server\\share\\output.wav')).toBeNull();
+    expect(extractServerPath('/v1/audio?path=//server/share/output.wav')).toBeNull();
+  });
 });
