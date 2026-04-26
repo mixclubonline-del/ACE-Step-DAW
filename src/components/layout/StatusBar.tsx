@@ -28,6 +28,9 @@ interface StatusBarProps {
 
 export function StatusBar({ saveStatus, lastSavedAt }: StatusBarProps) {
   const [connected, setConnected] = useState(lastKnownBackendConnection);
+  const statusBarAutoHide = useUIStore((s) => s.statusBarAutoHide);
+  const [hovered, setHovered] = useState(false);
+  const isCollapsed = statusBarAutoHide && !hovered;
   const jobs = useGenerationStore((s) => s.jobs);
   const pixelsPerSecond = useUIStore((s) => s.pixelsPerSecond);
   const setPixelsPerSecond = useUIStore((s) => s.setPixelsPerSecond);
@@ -95,7 +98,12 @@ export function StatusBar({ saveStatus, lastSavedAt }: StatusBarProps) {
 
   return (
     <>
-      <div className="border-t border-daw-border-strong bg-daw-surface-2 text-[10px] text-daw-text-muted" data-testid="status-bar">
+      <div
+        className={`border-t border-daw-border-strong bg-daw-surface-2 text-[10px] text-daw-text-muted overflow-hidden transition-all duration-200 ease-out ${isCollapsed ? 'status-bar-collapsed' : ''}`}
+        data-testid="status-bar"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
         {hasActiveJobs && (
           <div className="flex h-6 items-center gap-3 px-3" data-testid="status-bar-job-row">
             <span className="text-daw-accent truncate tabular-nums">
@@ -109,7 +117,7 @@ export function StatusBar({ saveStatus, lastSavedAt }: StatusBarProps) {
         )}
 
         <div
-          className={`flex h-6 items-center gap-3 px-3 ${hasActiveJobs ? 'border-t border-white/4' : ''}`}
+          className={`flex h-6 items-center gap-3 px-3 min-w-0 ${hasActiveJobs ? 'border-t border-white/4' : ''}`}
           data-testid="status-bar-meta-row"
         >
           <span

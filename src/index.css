@@ -356,6 +356,16 @@ select:focus-visible,
               filter var(--duration-normal) var(--ease-out);
 }
 
+/* Status bar auto-hide: collapse to minimal height */
+.status-bar-collapsed {
+  max-height: 8px;
+  opacity: 0.5;
+}
+.status-bar-collapsed:hover {
+  max-height: 200px;
+  opacity: 1;
+}
+
 /* Playhead glow — bright halo for visibility during playback */
 .playhead-glow {
   box-shadow: 0 0 4px rgba(255, 255, 255, 0.5), 0 0 8px rgba(147, 197, 253, 0.3), 0 0 3px rgba(0, 0, 0, 0.35);
