@@ -54,6 +54,7 @@ function ClipBlockInner({ clip, track }: ClipBlockProps) {
   const bpm = useProjectStore((s) => s.project?.bpm ?? 120);
   const totalDuration = useProjectStore((s) => s.project?.totalDuration ?? 600);
   const isMidiClip = Boolean(clip.midiData);
+  const hasGeneratedClipBadge = clip.source === 'generated' || (clip.source == null && track.trackType === 'stems');
   const hasAudioBody = Boolean(clip.isolatedAudioKey || clip.cumulativeMixKey || clip.waveformPeaks);
 
   const [addLayerOpen, setAddLayerOpen] = useState(false);
@@ -499,7 +500,7 @@ function ClipBlockInner({ clip, track }: ClipBlockProps) {
         />
 
         {/* AI-generated clip badge — subtle sparkle in bottom-left corner */}
-        {clip.source === 'generated' && (
+        {hasGeneratedClipBadge && (
           <div
             data-testid="ai-generated-badge"
             className="absolute z-10 pointer-events-none"

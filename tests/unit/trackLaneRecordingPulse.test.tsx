@@ -65,6 +65,15 @@ describe('TrackLane recording pulse', () => {
     expect(pulse.getAttribute('style')).toContain('recording-lane-pulse');
   });
 
+  it('shows pulsing overlay when transport store marks the track as armed', () => {
+    const track = useProjectStore.getState().addTrack('vocals');
+    useTransportStore.setState({ isRecording: true, armedTrackIds: [track.id] });
+
+    render(<TrackLane track={track} />);
+
+    expect(screen.getByTestId(`recording-lane-pulse-${track.id}`)).toBeInTheDocument();
+  });
+
   it('does NOT show pulsing overlay when track is NOT armed', () => {
     const track = useProjectStore.getState().addTrack('vocals');
     useTransportStore.setState({ isRecording: true });

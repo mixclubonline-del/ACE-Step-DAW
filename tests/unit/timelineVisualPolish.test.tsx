@@ -113,9 +113,17 @@ describe('AI-generated clip visual indicator', () => {
     expect(screen.queryByTestId('ai-generated-badge')).not.toBeInTheDocument();
   });
 
-  it('does NOT show AI indicator when source is undefined', () => {
+  it('shows AI indicator for stems clips without source metadata', () => {
     const clip = makeClip({ source: undefined });
     const track = makeTrack();
+    render(<ClipBlock clip={clip} track={track} />);
+
+    expect(screen.getByTestId('ai-generated-badge')).toBeInTheDocument();
+  });
+
+  it('does NOT show AI indicator when source is undefined on a non-stems track', () => {
+    const clip = makeClip({ source: undefined });
+    const track = makeTrack({ trackType: 'audio' });
     render(<ClipBlock clip={clip} track={track} />);
 
     expect(screen.queryByTestId('ai-generated-badge')).not.toBeInTheDocument();

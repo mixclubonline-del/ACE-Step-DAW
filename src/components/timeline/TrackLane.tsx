@@ -64,6 +64,8 @@ function TrackLaneInner({ track }: TrackLaneProps) {
   const placeGenerationHistoryOnTrack = useGenerationStore((s) => s.placeGenerationHistoryOnTrack);
   const loadVST3Plugin = useVST3Store((s) => s.loadPlugin);
   const isRecording = useTransportStore((s) => s.isRecording);
+  const armedTrackIds = useTransportStore((s) => s.armedTrackIds);
+  const isTrackArmed = track.armed || armedTrackIds.includes(track.id);
 
   const [ctxMenu, setCtxMenu] = useState<{
     x: number; y: number; startTime: number; duration: number;
@@ -413,7 +415,7 @@ function TrackLaneInner({ track }: TrackLaneProps) {
         )}
 
         {/* Recording lane pulse — pulsing red border when track is armed and recording */}
-        {track.armed && isRecording && (
+        {isTrackArmed && isRecording && (
           <div
             aria-hidden="true"
             data-testid={`recording-lane-pulse-${track.id}`}
