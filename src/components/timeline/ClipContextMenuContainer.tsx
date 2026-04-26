@@ -5,7 +5,6 @@ import { useProjectStore } from '../../store/projectStore';
 import { useTransportStore } from '../../store/transportStore';
 import { toastError } from '../../hooks/useToast';
 import { ClipContextMenu } from './ClipContextMenu';
-import { GRID_BEATS_MAP } from '../pianoroll/PianoRollConstants';
 import {
   getBarAtBeat,
   getTimeSignatureAtBar,
@@ -15,8 +14,27 @@ import {
 
 /** Default grid size for groove extraction (16th note = 0.25 beats). */
 const DEFAULT_GROOVE_GRID_BEATS = 0.25;
+const THIRTY_SECOND_GRID_BEATS = 0.125;
+const FINE_GRID_TOLERANCE_BEATS = 0.02;
 /** Fallback groove analysis length when clip is too short (1 bar of 4/4). */
 const FALLBACK_GROOVE_LENGTH_BEATS = 4;
+
+function distanceToGrid(beat: number, gridBeats: number): number {
+  const snapped = Math.round(beat / gridBeats) * gridBeats;
+  return Math.abs(beat - snapped);
+}
+
+export function getGrooveGridBeatsFromMidiNotes(notes: MidiNote[] | undefined): number {
+  if (!notes || notes.length === 0) return DEFAULT_GROOVE_GRID_BEATS;
+
+  const hasThirtySecondOnset = notes.some((note) => {
+    const start = Number.isFinite(note.startBeat) ? Math.max(0, note.startBeat) : 0;
+    return distanceToGrid(start, DEFAULT_GROOVE_GRID_BEATS) > FINE_GRID_TOLERANCE_BEATS
+      && distanceToGrid(start, THIRTY_SECOND_GRID_BEATS) <= FINE_GRID_TOLERANCE_BEATS;
+  });
+
+  return hasThirtySecondOnset ? THIRTY_SECOND_GRID_BEATS : DEFAULT_GROOVE_GRID_BEATS;
+}
 
 export function getGrooveLengthBeatsFromMidiNotes(
   notes: MidiNote[] | undefined,
@@ -194,9 +212,7 @@ export function ClipContextMenuContainer({
       onExtractGroove={isMidiClip ? () => {
         onClose();
         const name = `Groove from ${track.displayName || track.trackName}`;
-        const gridBeats = clip.midiData?.grid
-          ? (GRID_BEATS_MAP[clip.midiData.grid] ?? DEFAULT_GROOVE_GRID_BEATS)
-          : DEFAULT_GROOVE_GRID_BEATS;
+        const gridBeats = getGrooveGridBeatsFromMidiNotes(clip.midiData?.notes);
         const project = useProjectStore.getState().project;
         const oneBar = getGrooveBarLengthBeatsForClip(project, clip.startTime);
         const lengthBeats = getGrooveLengthBeatsFromMidiNotes(clip.midiData?.notes, oneBar, gridBeats);

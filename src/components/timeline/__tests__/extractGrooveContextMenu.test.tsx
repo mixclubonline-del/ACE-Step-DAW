@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { ClipContextMenu } from '../ClipContextMenu';
 import {
   getGrooveBarLengthBeatsForClip,
+  getGrooveGridBeatsFromMidiNotes,
   getGrooveLengthBeatsFromMidiNotes,
 } from '../ClipContextMenuContainer';
 import type { MidiNote, Project } from '../../../types/project';
@@ -116,6 +117,26 @@ describe('ClipContextMenu — Extract Groove', () => {
     } as Project;
 
     expect(getGrooveBarLengthBeatsForClip(project, 4)).toBe(3);
+  });
+
+  it('uses a 16th-note analysis grid instead of the editable piano-roll snap grid', () => {
+    const notes: MidiNote[] = [
+      { id: 'n1', pitch: 60, startBeat: 0, durationBeats: 0.25, velocity: 90 },
+      { id: 'n2', pitch: 62, startBeat: 0.25, durationBeats: 0.25, velocity: 88 },
+      { id: 'n3', pitch: 64, startBeat: 0.5, durationBeats: 0.25, velocity: 86 },
+      { id: 'n4', pitch: 65, startBeat: 0.75, durationBeats: 0.25, velocity: 84 },
+    ];
+
+    expect(getGrooveGridBeatsFromMidiNotes(notes)).toBe(0.25);
+  });
+
+  it('preserves 32nd-note onsets when the MIDI content needs finer analysis', () => {
+    const notes: MidiNote[] = [
+      { id: 'n1', pitch: 60, startBeat: 0, durationBeats: 0.125, velocity: 90 },
+      { id: 'n2', pitch: 62, startBeat: 0.125, durationBeats: 0.125, velocity: 88 },
+    ];
+
+    expect(getGrooveGridBeatsFromMidiNotes(notes)).toBe(0.125);
   });
 
 });
