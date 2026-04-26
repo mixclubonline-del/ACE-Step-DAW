@@ -20,17 +20,18 @@ export function getGrooveLengthBeatsFromMidiNotes(
   const validOneBar = Number.isFinite(oneBarBeats) && oneBarBeats > 0
     ? oneBarBeats
     : FALLBACK_GROOVE_LENGTH_BEATS;
+  const validGrid = Number.isFinite(gridBeats) && gridBeats > 0
+    ? gridBeats
+    : DEFAULT_GROOVE_GRID_BEATS;
 
-  const noteEndBeat = notes?.reduce((maxEnd, note) => {
+  const maxQuantizedOnset = notes?.reduce((maxOnset, note) => {
     const start = Number.isFinite(note.startBeat) ? note.startBeat : 0;
-    const duration = Number.isFinite(note.durationBeats) && note.durationBeats > 0
-      ? note.durationBeats
-      : gridBeats;
-    return Math.max(maxEnd, start + duration);
+    const quantizedStart = Math.round(Math.max(0, start) / validGrid) * validGrid;
+    return Math.max(maxOnset, quantizedStart);
   }, 0) ?? 0;
 
-  if (noteEndBeat <= 0) return validOneBar;
-  return Math.max(validOneBar, Math.ceil(noteEndBeat / validOneBar) * validOneBar);
+  if (maxQuantizedOnset <= 0) return validOneBar;
+  return Math.max(validOneBar, Math.ceil(maxQuantizedOnset / validOneBar) * validOneBar);
 }
 
 interface ClipContextMenuContainerProps {

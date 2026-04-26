@@ -9709,6 +9709,7 @@ export const useProjectStore = create<ProjectState>()(
 
   extractGrooveFromClip: (clipId, name, options) => {
     const state = get();
+    if (_isViewerMode()) return undefined;
     if (!state.project) return undefined;
 
     let notes: MidiNote[] | undefined;
@@ -9829,6 +9830,7 @@ export const useProjectStore = create<ProjectState>()(
 
   applyGrooveToClip: (clipId, noteIds, grooveId, options) => {
     const state = get();
+    if (_isViewerMode()) return;
     if (!state.project) return;
 
     const groove = state.project.groovePool?.find((g) => g.id === grooveId);
@@ -9859,6 +9861,7 @@ export const useProjectStore = create<ProjectState>()(
 
   addGrooveTemplate: (template) => {
     const state = get();
+    if (_isViewerMode()) return;
     if (!state.project) return;
     _pushHistory(state.project);
     set({
@@ -9872,6 +9875,7 @@ export const useProjectStore = create<ProjectState>()(
 
   deleteGrooveTemplate: (grooveId) => {
     const state = get();
+    if (_isViewerMode()) return;
     if (!state.project) return;
     _pushHistory(state.project);
     set({
@@ -9960,6 +9964,7 @@ export const useProjectStore = create<ProjectState>()(
 
   renameGrooveTemplate: (grooveId, name) => {
     const state = get();
+    if (_isViewerMode()) return;
     if (!state.project) return;
     _pushHistory(state.project);
     set({

@@ -76,6 +76,15 @@ describe('ClipContextMenu — Extract Groove', () => {
     expect(getGrooveLengthBeatsFromMidiNotes(notes, 4, 0.25)).toBe(4);
   });
 
+  it('ignores sustained duration and slight late timing when deriving groove length', () => {
+    const notes: MidiNote[] = [
+      { id: 'n1', pitch: 60, startBeat: 0, durationBeats: 0.25, velocity: 90 },
+      { id: 'n2', pitch: 67, startBeat: 4.04, durationBeats: 2, velocity: 88 },
+    ];
+
+    expect(getGrooveLengthBeatsFromMidiNotes(notes, 4, 0.25)).toBe(4);
+  });
+
   it('rounds longer groove patterns up to the next bar boundary', () => {
     const notes: MidiNote[] = [
       { id: 'n1', pitch: 60, startBeat: 0, durationBeats: 0.25, velocity: 90 },
