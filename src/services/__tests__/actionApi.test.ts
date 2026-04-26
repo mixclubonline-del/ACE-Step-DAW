@@ -431,6 +431,18 @@ describe('createProjectActionApi', () => {
       expect(result.ok).toBe(true);
     });
 
+    it('returns ACTION_FAILED in viewer mode', () => {
+      store = createMockStore(makeProject({ trackPresets: [makeTrackPreset()] }));
+      (store.getState() as Record<string, unknown>).isViewerMode = vi.fn(() => true);
+      api = createProjectActionApi(store);
+      const result = api.applyTrackPreset({ presetId: 'preset-1' });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('ACTION_FAILED');
+        expect(result.error.message).toMatch(/viewer mode/i);
+      }
+    });
+
     it('returns ACTION_FAILED when applyTrackPreset returns null', () => {
       store = createMockStore(makeProject({ trackPresets: [makeTrackPreset()] }));
       (store.getState() as Record<string, unknown>).applyTrackPreset = vi.fn(() => null);

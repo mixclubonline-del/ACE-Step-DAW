@@ -354,6 +354,17 @@ export function createProjectActionApi(store: ProjectStore): ProjectActionApi {
         )));
       }
 
+      if (state.isViewerMode()) {
+        return capture(err(buildError(
+          'ACTION_FAILED',
+          'Track presets cannot be applied while the project is open in viewer mode.',
+          { action: 'applyTrackPreset', presetId },
+          [
+            { action: 'requestEditAccess', label: 'Request edit access before applying presets' },
+          ],
+        )));
+      }
+
       const track = state.applyTrackPreset(presetId);
       if (!track) {
         return capture(withUnexpectedError('applyTrackPreset', { presetId }, new Error('Unable to apply track preset')));

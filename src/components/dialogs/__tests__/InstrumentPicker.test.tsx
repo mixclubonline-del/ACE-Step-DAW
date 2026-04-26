@@ -3,6 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { InstrumentPicker } from '../InstrumentPicker';
 import { useUIStore } from '../../../store/uiStore';
 import { useProjectStore } from '../../../store/projectStore';
+import { useToastStore } from '../../../hooks/useToast';
+import type { TrackPreset } from '../../../types/project';
 
 // Mock modules that use browser APIs not available in jsdom
 vi.mock('../../../services/projectStorage', () => ({
@@ -32,6 +34,7 @@ describe('InstrumentPicker', () => {
     useProjectStore.getState().createProject('Test Project');
     // Open the picker
     useUIStore.getState().setShowInstrumentPicker(true);
+    useToastStore.getState().clearToasts();
   });
 
   it('renders all track type options including Drum Machine', () => {
@@ -74,5 +77,32 @@ describe('InstrumentPicker', () => {
     fireEvent.click(drumMachineButton);
 
     expect(addTrackSpy).toHaveBeenCalledWith('percussion', 'drumMachine', undefined);
+  });
+
+  it('keeps the picker open when applying a preset is blocked', () => {
+    const project = useProjectStore.getState().project!;
+    const preset: TrackPreset = {
+      id: 'preset-1',
+      name: 'Warm Pad',
+      trackName: 'synth',
+      trackType: 'pianoRoll',
+      settings: { color: '#3b82f6' },
+      effects: [],
+      midiEffects: [],
+      createdAt: Date.now(),
+    };
+    const originalApplyTrackPreset = useProjectStore.getState().applyTrackPreset;
+    useProjectStore.setState({
+      project: { ...project, trackPresets: [preset] },
+      applyTrackPreset: vi.fn(() => undefined),
+    });
+
+    render(<InstrumentPicker />);
+    fireEvent.click(screen.getByRole('button', { name: /apply track preset warm pad/i }));
+
+    expect(useUIStore.getState().showInstrumentPicker).toBe(true);
+    expect(useToastStore.getState().toasts[0].message).toMatch(/viewer mode/i);
+
+    useProjectStore.setState({ applyTrackPreset: originalApplyTrackPreset });
   });
 });
