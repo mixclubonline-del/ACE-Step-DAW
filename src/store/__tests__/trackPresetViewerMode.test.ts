@@ -62,7 +62,7 @@ describe('track preset viewer mode guards', () => {
   it('prevents track preset mutations while in viewer mode', () => {
     useCollaborationStore.getState().setViewerMode(true);
 
-    expect(() => useProjectStore.getState().saveTrackPreset('track-1', 'Saved')).toThrow(/viewer mode/i);
+    expect(useProjectStore.getState().saveTrackPreset('track-1', 'Saved')).toBeUndefined();
     expect(useProjectStore.getState().applyTrackPreset('preset-1')).toBeUndefined();
     useProjectStore.getState().deleteTrackPreset('preset-1');
 

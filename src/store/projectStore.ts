@@ -3149,7 +3149,7 @@ export const useProjectStore = create<ProjectState>()(
 
   saveTrackPreset: (trackId, presetName) => {
     const state = get();
-    if (_isViewerMode()) throw new Error('Cannot save track presets in viewer mode');
+    if (_isViewerMode()) return undefined as unknown as TrackPreset;
     if (!state.project) throw new Error('No project');
     const track = state.project.tracks.find((candidate) => candidate.id === trackId);
     if (!track) throw new Error(`Track '${trackId}' not found`);
