@@ -3,20 +3,21 @@ import { useProjectStore } from '../projectStore';
 import { useCollaborationStore } from '../collaborationStore';
 import type { Project, Track, TrackPreset } from '../../types/project';
 
-function makeTrack(): Track {
+function makeTrack(overrides: Partial<Track> = {}): Track {
   return {
-    id: 'track-1',
+    id: overrides.id ?? 'track-1',
     trackName: 'synth',
     trackType: 'pianoRoll',
-    displayName: 'Synth',
+    displayName: overrides.displayName ?? 'Synth',
     color: '#3b82f6',
-    order: 1,
+    order: overrides.order ?? 1,
     volume: 0.8,
     muted: false,
     soloed: false,
     clips: [],
     effects: [],
     effectsEnabled: true,
+    ...overrides,
   } as Track;
 }
 
@@ -69,5 +70,22 @@ describe('track preset viewer mode guards', () => {
     const project = useProjectStore.getState().project!;
     expect(project.trackPresets).toEqual([makePreset()]);
     expect(project.tracks).toHaveLength(1);
+  });
+
+  it('keeps applied preset tracks sorted by insertion order', () => {
+    useProjectStore.setState({
+      project: {
+        ...useProjectStore.getState().project!,
+        tracks: [
+          makeTrack({ id: 'track-1', displayName: 'One', order: 1 }),
+          makeTrack({ id: 'track-3', displayName: 'Three', order: 3 }),
+        ],
+      } as unknown as Project,
+    });
+
+    const track = useProjectStore.getState().applyTrackPreset('preset-1', { order: 2 });
+
+    expect(track?.order).toBe(2);
+    expect(useProjectStore.getState().project!.tracks.map((candidate) => candidate.order)).toEqual([1, 2, 3]);
   });
 });
