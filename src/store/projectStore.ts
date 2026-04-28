@@ -78,6 +78,7 @@ import type {
   WavetableSettings,
   GranularSettings,
   VelocityLayer,
+  MixSnapshot,
   SampleZone,
   VideoClipData,
   VideoTrackSettings,
@@ -87,6 +88,13 @@ import { DEFAULT_VIDEO_TRACK_SETTINGS } from '../types/project';
 import type { PluginInstance, PluginParamValue } from '../types/plugin';
 import { pluginRegistry } from '../engine/PluginRegistry';
 import { automationParamEquals } from '../types/project';
+import {
+  captureMixState,
+  captureTrackMixState,
+  captureReturnTrackMixState,
+  applyTrackMixState,
+  applyReturnTrackMixState,
+} from '../services/mixSnapshotService';
 import { quantizeNotes as applyQuantize, type QuantizeOptions } from '../utils/midiQuantize';
 import { detectTransients, computeWarpMarkers } from '../utils/audioQuantize';
 import {
@@ -407,6 +415,41 @@ const _future = createHistoryBuckets<ProjectHistoryEntry[]>(() => []);
 const MAX_HISTORY = 50;
 let _isDragging = false;
 let _historyOrder = 0;
+// A/B comparison state — stores the mix state from before toggling, so it can be restored
+type AbMixState = {
+  trackStates: import('../types/project').MixSnapshotTrackState[];
+  returnTrackStates: import('../types/project').MixSnapshotReturnTrackState[];
+  masterVolume?: number;
+};
+let _abPreviousMixState: AbMixState | null = null;
+let _abActiveSnapshotId: string | null = null;
+
+function _clearAbCompareState() {
+  _abPreviousMixState = null;
+  _abActiveSnapshotId = null;
+}
+
+function _applyMixStateToProject(project: Project, mixState: AbMixState, cloneCollections = true): Project {
+  const trackMap = new Map(mixState.trackStates.map((s) => [s.trackId, s]));
+  const returnMap = new Map(mixState.returnTrackStates.map((s) => [s.returnTrackId, s]));
+  return {
+    ...project,
+    masterVolume: mixState.masterVolume ?? project.masterVolume,
+    tracks: project.tracks.map((track) => {
+      const trackState = trackMap.get(track.id);
+      return trackState ? applyTrackMixState(track, trackState, { cloneCollections }) : track;
+    }),
+    returnTracks: (project.returnTracks ?? []).map((rt) => {
+      const rtState = returnMap.get(rt.id);
+      return rtState ? applyReturnTrackMixState(rt, rtState, { cloneCollections }) : rt;
+    }),
+  };
+}
+
+function _getProjectForPersist(project: Project): Project {
+  if (!_abPreviousMixState) return project;
+  return _applyMixStateToProject(project, _abPreviousMixState, false);
+}
 
 function _getHistoryBucketKey(scope: HistoryScope, target: HistoryTarget = {}) {
   switch (scope) {
@@ -599,14 +642,21 @@ function _applyHistorySnapshot(current: Project | null, snapshot: Project, entry
       if (entry.clipId) return _replaceClipFromSnapshot(current, snapshot, entry.clipId);
       if (entry.trackId) return _replaceTrackFromSnapshot(current, snapshot, entry.trackId);
       return structuredClone(snapshot);
-    case 'mixer':
+    case 'mixer': {
       if (entry.trackId) return _replaceTrackFromSnapshot(current, snapshot, entry.trackId);
+      const trackMixStates = new Map(snapshot.tracks.map((track) => [track.id, captureTrackMixState(track)]));
       return {
         ...current,
         updatedAt: Date.now(),
+        masterVolume: snapshot.masterVolume ?? current.masterVolume,
+        tracks: current.tracks.map((track) => {
+          const trackState = trackMixStates.get(track.id);
+          return trackState ? applyTrackMixState(track, trackState) : track;
+        }),
         mastering: structuredClone(snapshot.mastering),
         returnTracks: structuredClone(snapshot.returnTracks ?? []),
       };
+    }
     case 'arrangement':
     default:
       return structuredClone(snapshot);
@@ -615,6 +665,7 @@ function _applyHistorySnapshot(current: Project | null, snapshot: Project, entry
 
 export interface ProjectState extends MidiSliceActions {
   project: Project | null;
+  abCompareRevision: number;
   isViewerMode: () => boolean;
 
   setProject: (project: Project) => void;
@@ -633,6 +684,10 @@ export interface ProjectState extends MidiSliceActions {
   beginDrag: (options?: HistoryOptions) => void;
   /** Call when a drag/continuous operation ends to re-enable normal history. */
   endDrag: () => void;
+  /** Returns the snapshot ID currently being A/B compared, or null. */
+  getAbActiveSnapshotId: () => string | null;
+  /** Returns true if A/B comparison mode is active. */
+  isAbComparing: () => boolean;
 
   updateProject: (updates: Partial<Pick<Project, 'globalCaption' | 'bpm' | 'keyScale' | 'timeSignature' | 'timeSignatureDenominator' | 'name' | 'masterVolume' | 'measures'>>) => void;
   detectPlaybackLatency: (latency: { baseLatency?: number | null; outputLatency?: number | null }) => void;
@@ -728,6 +783,12 @@ export interface ProjectState extends MidiSliceActions {
   saveTrackPreset: (trackId: string, presetName: string) => TrackPreset | undefined;
   applyTrackPreset: (presetId: string, options?: { order?: number }) => Track | undefined;
   deleteTrackPreset: (presetId: string) => void;
+  // ── Mix Snapshots ──
+  saveMixSnapshot: (name: string) => MixSnapshot;
+  loadMixSnapshot: (snapshotId: string) => void;
+  deleteMixSnapshot: (snapshotId: string) => void;
+  renameMixSnapshot: (snapshotId: string, newName: string) => void;
+  toggleAbCompare: (snapshotId: string) => void;
   renameTrack: (trackId: string, newName: string) => void;
   setInputMonitoring: (trackId: string, mode: InputMonitoringMode) => void;
   setTrackHeightPreset: (trackId: string, preset: TrackHeightPreset) => void;
@@ -2319,10 +2380,13 @@ export const useProjectStore = create<ProjectState>()(
   persist(
     (set, get) => ({
   project: null,
+  abCompareRevision: 0,
   isViewerMode: _isViewerMode,
 
   setProject: (project) => {
     _clearHistory();
+    _clearAbCompareState();
+    const abCompareRevision = get().abCompareRevision + 1;
     // Migration: backfill trackType for projects created before the field existed
     const migratedBase: Project = hydrateAssetOriginSnapshots({
       ...project,
@@ -2356,7 +2420,7 @@ export const useProjectStore = create<ProjectState>()(
           ? normalizePlaybackLatencySettings(project.playbackLatency)
           : detectPlaybackLatencyFromEngine(),
     });
-    set({ project: ensureProjectSession(migratedBase) });
+    set({ project: ensureProjectSession(migratedBase), abCompareRevision });
   },
 
   undo: (scope, target) => {
@@ -2374,7 +2438,12 @@ export const useProjectStore = create<ProjectState>()(
         snapshot: structuredClone(state.project),
       });
     }
-    set({ project: _applyHistorySnapshot(state.project, prev.snapshot, prev) });
+    const wasAbComparing = _abPreviousMixState !== null || _abActiveSnapshotId !== null;
+    if (wasAbComparing) _clearAbCompareState();
+    set({
+      project: _applyHistorySnapshot(state.project, prev.snapshot, prev),
+      ...(wasAbComparing ? { abCompareRevision: state.abCompareRevision + 1 } : {}),
+    });
   },
 
   redo: (scope, target) => {
@@ -2393,12 +2462,21 @@ export const useProjectStore = create<ProjectState>()(
       });
       _trimHistory(historyBucket);
     }
-    set({ project: _applyHistorySnapshot(state.project, next.snapshot, next) });
+    const wasAbComparing = _abPreviousMixState !== null || _abActiveSnapshotId !== null;
+    if (wasAbComparing) _clearAbCompareState();
+    set({
+      project: _applyHistorySnapshot(state.project, next.snapshot, next),
+      ...(wasAbComparing ? { abCompareRevision: state.abCompareRevision + 1 } : {}),
+    });
   },
 
   getUndoHistory: (scope, target) => _getHistoryEntries(_history, scope, target),
 
   getRedoHistory: (scope, target) => _getHistoryEntries(_future, scope, target),
+
+  getAbActiveSnapshotId: () => _abActiveSnapshotId,
+
+  isAbComparing: () => _abActiveSnapshotId !== null && _abPreviousMixState !== null,
 
   jumpToHistoryEntry: (entryId, scope, target) => {
     const state = get();
@@ -2442,7 +2520,12 @@ export const useProjectStore = create<ProjectState>()(
       });
     }
     resolved.bucket.splice(idx);
-    set({ project: _applyHistorySnapshot(state.project, destination.snapshot, destination) });
+    const wasAbComparing = _abPreviousMixState !== null || _abActiveSnapshotId !== null;
+    if (wasAbComparing) _clearAbCompareState();
+    set({
+      project: _applyHistorySnapshot(state.project, destination.snapshot, destination),
+      ...(wasAbComparing ? { abCompareRevision: state.abCompareRevision + 1 } : {}),
+    });
   },
 
   beginDrag: (options) => {
@@ -2471,6 +2554,8 @@ export const useProjectStore = create<ProjectState>()(
 
   createProject: (params) => {
     _clearHistory();
+    _clearAbCompareState();
+    const abCompareRevision = get().abCompareRevision + 1;
     const bpm = params?.bpm ?? DEFAULT_BPM;
     const timeSig = params?.timeSignature ?? DEFAULT_TIME_SIGNATURE;
     const measures = DEFAULT_MEASURES;
@@ -2493,7 +2578,7 @@ export const useProjectStore = create<ProjectState>()(
       playbackLatency: detectPlaybackLatencyFromEngine(),
       session: createDefaultSessionState(),
     };
-    set({ project: ensureProjectSession(project) });
+    set({ project: ensureProjectSession(project), abCompareRevision });
   },
 
   updateProject: (updates) => {
@@ -3469,6 +3554,143 @@ export const useProjectStore = create<ProjectState>()(
         trackPresets: (state.project.trackPresets ?? []).filter((preset) => preset.id !== presetId),
       },
     });
+  },
+
+  // ── Mix Snapshot implementations ──
+
+  saveMixSnapshot: (name) => {
+    const state = get();
+    if (_isViewerMode()) throw new Error('Cannot save mix snapshots in viewer mode');
+    if (!state.project) throw new Error('No project loaded');
+    const snapshot = captureMixState(state.project, name);
+    set({
+      project: {
+        ...state.project,
+        updatedAt: Date.now(),
+        mixSnapshots: [...(state.project.mixSnapshots ?? []), snapshot],
+      },
+    });
+    return snapshot;
+  },
+
+  loadMixSnapshot: (snapshotId) => {
+    const state = get();
+    if (_isViewerMode()) return;
+    if (!state.project) return;
+    const snapshot = (state.project.mixSnapshots ?? []).find((s) => s.id === snapshotId);
+    if (!snapshot) return;
+
+    const previousMixState = _abPreviousMixState;
+    const projectBase = previousMixState
+      ? _applyMixStateToProject(state.project, previousMixState)
+      : state.project;
+
+    _clearAbCompareState();
+    const abCompareRevision = state.abCompareRevision + 1;
+
+    _pushHistory(projectBase, { scope: 'mixer', label: `Load mix snapshot "${snapshot.name}"` });
+
+    const snapshotTrackMap = new Map(snapshot.trackStates.map((s) => [s.trackId, s]));
+    const snapshotReturnMap = new Map(snapshot.returnTrackStates.map((s) => [s.returnTrackId, s]));
+
+    set({
+      abCompareRevision,
+      project: {
+        ...projectBase,
+        updatedAt: Date.now(),
+        masterVolume: snapshot.masterVolume ?? projectBase.masterVolume,
+        tracks: projectBase.tracks.map((track) => {
+          const trackState = snapshotTrackMap.get(track.id);
+          return trackState ? applyTrackMixState(track, trackState) : track;
+        }),
+        returnTracks: (projectBase.returnTracks ?? []).map((rt) => {
+          const rtState = snapshotReturnMap.get(rt.id);
+          return rtState ? applyReturnTrackMixState(rt, rtState) : rt;
+        }),
+      },
+    });
+  },
+
+  deleteMixSnapshot: (snapshotId) => {
+    const state = get();
+    if (_isViewerMode()) return;
+    if (!state.project) return;
+    // If this snapshot is the A/B target, exit A/B mode
+    const wasAbTarget = _abActiveSnapshotId === snapshotId;
+    const previousMixState = wasAbTarget ? _abPreviousMixState : null;
+    if (wasAbTarget) {
+      _clearAbCompareState();
+    }
+    const projectBase = previousMixState
+      ? _applyMixStateToProject(state.project, previousMixState)
+      : state.project;
+    set({
+      abCompareRevision: wasAbTarget ? state.abCompareRevision + 1 : state.abCompareRevision,
+      project: ensureProjectSession({
+        ...projectBase,
+        updatedAt: Date.now(),
+        mixSnapshots: (projectBase.mixSnapshots ?? []).filter((s) => s.id !== snapshotId),
+      }),
+    });
+  },
+
+  renameMixSnapshot: (snapshotId, newName) => {
+    const state = get();
+    if (_isViewerMode()) return;
+    if (!state.project) return;
+    set({
+      project: {
+        ...state.project,
+        updatedAt: Date.now(),
+        mixSnapshots: (state.project.mixSnapshots ?? []).map((s) =>
+          s.id === snapshotId ? { ...s, name: newName } : s,
+        ),
+      },
+    });
+  },
+
+  toggleAbCompare: (snapshotId) => {
+    const state = get();
+    if (_isViewerMode()) return;
+    if (!state.project) return;
+
+    const snapshot = (state.project.mixSnapshots ?? []).find((s) => s.id === snapshotId);
+    if (!snapshot) return;
+
+    if (_abActiveSnapshotId === snapshotId && _abPreviousMixState) {
+      // Toggle OFF: restore the previous mix state
+      const previousMixState = _abPreviousMixState;
+      _clearAbCompareState();
+      set({
+        abCompareRevision: state.abCompareRevision + 1,
+        project: ensureProjectSession({
+          ..._applyMixStateToProject(state.project, previousMixState),
+          updatedAt: Date.now(),
+        }),
+      });
+    } else {
+      // Toggle ON, or switch the compare target while keeping the original mix
+      // as the restore/persist source.
+      let compareBaseProject = state.project;
+      if (_abPreviousMixState) {
+        compareBaseProject = _applyMixStateToProject(state.project, _abPreviousMixState);
+      } else {
+        _abPreviousMixState = {
+          trackStates: state.project.tracks.map(captureTrackMixState),
+          returnTrackStates: (state.project.returnTracks ?? []).map(captureReturnTrackMixState),
+          masterVolume: state.project.masterVolume,
+        };
+      }
+      _abActiveSnapshotId = snapshotId;
+
+      set({
+        abCompareRevision: state.abCompareRevision + 1,
+        project: ensureProjectSession({
+          ..._applyMixStateToProject(compareBaseProject, snapshot),
+          updatedAt: Date.now(),
+        }),
+      });
+    }
   },
 
   removeTrack: (trackId) => {
@@ -10512,11 +10734,35 @@ export const useProjectStore = create<ProjectState>()(
       name: PROJECT_PERSIST_STORAGE_KEY,
       storage: projectPersistStorage,
       partialize: (state) => ({
-        project: state.project ? stripHeavyDataForPersist(state.project) : null,
+        project: state.project ? stripHeavyDataForPersist(_getProjectForPersist(state.project)) : null,
       }),
     },
   ),
 );
+
+function _externalSetStateMayReplaceProject(partial: unknown) {
+  if (!partial || typeof partial !== 'object') return false;
+  return 'project' in partial;
+}
+
+const _setProjectStoreState = useProjectStore.setState;
+useProjectStore.setState = ((...args: Parameters<typeof _setProjectStoreState>) => {
+  const [partial, replace] = args;
+  if (typeof partial === 'function') {
+    const wrappedPartial = ((state: ProjectState) => {
+      const result = partial(state);
+      if (replace || _externalSetStateMayReplaceProject(result)) {
+        _clearAbCompareState();
+      }
+      return result;
+    }) as typeof partial;
+    return _setProjectStoreState(wrappedPartial, replace);
+  }
+  if (replace || _externalSetStateMayReplaceProject(partial)) {
+    _clearAbCompareState();
+  }
+  return _setProjectStoreState(...args);
+}) as typeof useProjectStore.setState;
 
 // Auto-save to project library (IDB) on changes, debounced.
 // Uses requestIdleCallback to defer the IDB write until the browser is idle,
@@ -10528,6 +10774,7 @@ const _scheduleIdle: (cb: () => void) => void =
 
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 let _queuedProjectForLibrarySave: Project | null = null;
+let _lastSavedSourceProjectRef: Project | null = null;
 let _lastSavedProjectRef: Project | null = null;
 let _lastSavedProjectUpdatedAt = 0;
 useProjectStore.subscribe((state) => {
@@ -10539,10 +10786,18 @@ useProjectStore.subscribe((state) => {
     // drag, scroll, or other high-priority interactions.
     _scheduleIdle(() => {
       const proj = useProjectStore.getState().project;
-      if (!proj || (proj === _lastSavedProjectRef && proj.updatedAt === _lastSavedProjectUpdatedAt)) return;
-      _lastSavedProjectRef = proj;
-      _lastSavedProjectUpdatedAt = proj.updatedAt;
-      void saveProjectToIDB(proj);
+      if (!proj) return;
+      const projectForSave = _getProjectForPersist(proj);
+      if (
+        (proj === _lastSavedSourceProjectRef || projectForSave === _lastSavedProjectRef) &&
+        projectForSave.updatedAt === _lastSavedProjectUpdatedAt
+      ) {
+        return;
+      }
+      _lastSavedSourceProjectRef = proj;
+      _lastSavedProjectRef = projectForSave;
+      _lastSavedProjectUpdatedAt = projectForSave.updatedAt;
+      void saveProjectToIDB(projectForSave);
     });
   }, PROJECT_LIBRARY_AUTOSAVE_DEBOUNCE_MS);
 });

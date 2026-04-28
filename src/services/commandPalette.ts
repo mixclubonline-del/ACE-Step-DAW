@@ -1183,6 +1183,69 @@ export function buildCommandPaletteCommands(context: CommandPaletteContext): Com
     }
   }
 
+  // ── Mix Snapshot commands ──
+  commands.push(
+    createTrackCommand(
+      'mixer:save-snapshot',
+      'Save Mix Snapshot',
+      'Mixer',
+      'action',
+      ['mixer', 'snapshot', 'save', 'mix', 'recall', 'preset'],
+      ['save mix', 'snapshot mix', 'mix preset'],
+      async () => {
+        const { useProjectStore } = await import('../store/projectStore');
+        const project = useProjectStore.getState().project;
+        if (!project) return;
+        const name = `Snapshot ${((project.mixSnapshots ?? []).length + 1)}`;
+        try {
+          useProjectStore.getState().saveMixSnapshot(name);
+        } catch {
+          // Viewer mode and unloaded project states can reject write commands.
+        }
+      },
+      undefined,
+      'Save current mixer state as a named snapshot',
+    ),
+  );
+
+  // Dynamic commands for each saved snapshot
+  const snapshots = context.project?.mixSnapshots ?? [];
+  for (const snapshot of snapshots) {
+    commands.push(
+      createTrackCommand(
+        `mixer:load-snapshot:${snapshot.id}`,
+        `Load Mix Snapshot "${snapshot.name}"`,
+        'Mixer',
+        'action',
+        ['mixer', 'snapshot', 'load', 'recall', 'mix', snapshot.name.toLowerCase()],
+        [`apply ${snapshot.name}`, `recall ${snapshot.name}`],
+        async () => {
+          const { useProjectStore } = await import('../store/projectStore');
+          useProjectStore.getState().loadMixSnapshot(snapshot.id);
+        },
+        undefined,
+        `Restore mixer state from "${snapshot.name}"`,
+      ),
+    );
+
+    commands.push(
+      createTrackCommand(
+        `mixer:ab-snapshot:${snapshot.id}`,
+        `A/B Compare "${snapshot.name}"`,
+        'Mixer',
+        'action',
+        ['mixer', 'ab', 'compare', 'snapshot', 'toggle', snapshot.name.toLowerCase()],
+        [`compare ${snapshot.name}`, `ab ${snapshot.name}`],
+        async () => {
+          const { useProjectStore } = await import('../store/projectStore');
+          useProjectStore.getState().toggleAbCompare(snapshot.id);
+        },
+        undefined,
+        `Toggle A/B comparison with "${snapshot.name}"`,
+      ),
+    );
+  }
+
   // Prompt Library commands
   commands.push(
     createTrackCommand(

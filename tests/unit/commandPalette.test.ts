@@ -100,6 +100,28 @@ describe('commandPalette', () => {
     expect(commandIds).toContain(`track:${bassTrack.id}:effect:compressor`);
   });
 
+  it('does not crash saving a mix snapshot when no project is loaded', async () => {
+    useProjectStore.setState(useProjectStore.getInitialState(), true);
+    const saveSnapshot = buildCommandPaletteCommands(createContext()).find(
+      (command) => command.id === 'mixer:save-snapshot',
+    );
+
+    await expect(saveSnapshot?.execute()).resolves.toBeUndefined();
+    expect(useProjectStore.getState().project).toBeNull();
+  });
+
+  it('does not assign duplicate shortcuts to per-snapshot A/B commands', () => {
+    useProjectStore.getState().saveMixSnapshot('Mix A');
+    useProjectStore.getState().saveMixSnapshot('Mix B');
+
+    const abCommands = buildCommandPaletteCommands(createContext()).filter((command) =>
+      command.id.startsWith('mixer:ab-snapshot:'),
+    );
+
+    expect(abCommands).toHaveLength(2);
+    expect(abCommands.every((command) => command.shortcut === undefined)).toBe(true);
+  });
+
   // ── BPM / Tempo ──
 
   it('adds parsed BPM commands for parameter search', async () => {

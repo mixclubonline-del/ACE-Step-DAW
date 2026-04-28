@@ -1573,6 +1573,49 @@ export interface ProjectTemplateTrack {
   sequencerPattern?: SequencerPattern;
 }
 
+// ─── Mix Snapshot Types ──────────────────────────────────────────────────────
+
+/** Per-track mixer state captured in a snapshot. */
+export interface MixSnapshotTrackState {
+  trackId: string;
+  volume: number;
+  muted: boolean;
+  soloed: boolean;
+  pan?: number;
+  panMode?: 'stereo' | 'dual-mono';
+  panLeft?: number;
+  panRight?: number;
+  eqLowGain?: number;
+  eqMidGain?: number;
+  eqHighGain?: number;
+  compressorEnabled?: boolean;
+  compressorThreshold?: number;
+  compressorRatio?: number;
+  reverbMix?: number;
+  reverbRoomSize?: number;
+  effects?: TrackEffect[];
+  effectsBypassed?: boolean;
+  sends?: Send[];
+}
+
+/** Return track state captured in a snapshot. */
+export interface MixSnapshotReturnTrackState {
+  returnTrackId: string;
+  volume: number;
+  pan: number;
+  effects: TrackEffect[];
+}
+
+/** A named, persistent snapshot of the entire mixer state. */
+export interface MixSnapshot {
+  id: string;
+  name: string;
+  createdAt: number;
+  trackStates: MixSnapshotTrackState[];
+  returnTrackStates: MixSnapshotReturnTrackState[];
+  masterVolume?: number;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -1604,6 +1647,8 @@ export interface Project {
   returnTracks?: ReturnTrack[];
   /** Reusable track templates saved from existing tracks. */
   trackPresets?: TrackPreset[];
+  /** Saved mix snapshots for recall and A/B comparison. */
+  mixSnapshots?: MixSnapshot[];
   /** Timeline markers (sorted by time). */
   markers?: Marker[];
   /** Reusable groove templates (extracted timing/velocity patterns). */
