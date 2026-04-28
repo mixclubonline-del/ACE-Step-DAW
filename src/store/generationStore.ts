@@ -69,6 +69,8 @@ function inferStageLabel(status: GenerationJob['status'], progress: string): str
       return 'Complete';
     case 'error':
       return 'Generation failed';
+    case 'cancelled':
+      return 'Cancelled';
     default:
       return null;
   }

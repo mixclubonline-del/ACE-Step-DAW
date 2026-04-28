@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useGenerationStore, type GenerationJob } from '../generationStore';
+import { deriveGenerationJobProgress, useGenerationStore, type GenerationJob } from '../generationStore';
 
 function createTestJob(overrides: Partial<GenerationJob> = {}): GenerationJob {
   return {
@@ -141,5 +141,17 @@ describe('clearCompletedJobs includes cancelled', () => {
     const remaining = useGenerationStore.getState().jobs;
     expect(remaining).toHaveLength(1);
     expect(remaining[0].id).toBe('j4');
+  });
+});
+
+describe('deriveGenerationJobProgress cancelled jobs', () => {
+  it('infers a cancelled stage label', () => {
+    const progress = deriveGenerationJobProgress(undefined, {
+      status: 'cancelled',
+      progress: '',
+      now: 1_000,
+    });
+
+    expect(progress.stage).toBe('Cancelled');
   });
 });
