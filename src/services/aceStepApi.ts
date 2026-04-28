@@ -345,6 +345,25 @@ interface ApiRequestOptions {
   referenceAudioBlob?: Blob;
 }
 
+function getUploadFileName(blob: Blob, fallbackBaseName: string): string {
+  if (typeof File !== 'undefined' && blob instanceof File && blob.name.trim()) {
+    return blob.name;
+  }
+
+  const extensionByType: Record<string, string> = {
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav',
+    'audio/mpeg': 'mp3',
+    'audio/mp3': 'mp3',
+    'audio/flac': 'flac',
+    'audio/x-flac': 'flac',
+    'audio/ogg': 'ogg',
+    'audio/webm': 'webm',
+  };
+  const extension = extensionByType[blob.type.toLowerCase()] ?? 'bin';
+  return `${fallbackBaseName}.${extension}`;
+}
+
 async function releaseTask(
   srcAudioBlob: Blob,
   params: AceStepTaskParams,
@@ -374,7 +393,11 @@ async function releaseTask(
       formData.append('src_audio', uploadBlob, 'src_audio.wav');
     }
     if (options?.referenceAudioBlob) {
-      formData.append('reference_audio', options.referenceAudioBlob, 'reference_audio.wav');
+      formData.append(
+        'reference_audio',
+        options.referenceAudioBlob,
+        getUploadFileName(options.referenceAudioBlob, 'reference_audio'),
+      );
     }
     for (const [key, value] of Object.entries(params)) {
       if (value === null || value === undefined) continue;

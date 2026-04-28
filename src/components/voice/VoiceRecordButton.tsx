@@ -87,6 +87,9 @@ export function VoiceRecordButton() {
       toastSuccess(`Voice recording "${name}" added (${Math.round(result.duration)}s)`);
       setRecordingDuration(0);
     } catch {
+      clearRecordingTimer();
+      setIsRecording(false);
+      setRecordingDuration(0);
       toastError('Failed to stop recording');
     } finally {
       setIsStopping(false);

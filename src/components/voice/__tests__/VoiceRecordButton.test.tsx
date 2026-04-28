@@ -85,7 +85,7 @@ describe('VoiceRecordButton', () => {
     const { toastError } = await import('../../../hooks/useToast');
     await vi.waitFor(() => {
       expect(toastError).toHaveBeenCalledWith('Failed to stop recording');
-      expect(btn).toHaveAttribute('aria-label', 'Stop recording');
+      expect(btn).toHaveAttribute('aria-label', 'Record voice');
       expect(btn).not.toBeDisabled();
     });
   });
