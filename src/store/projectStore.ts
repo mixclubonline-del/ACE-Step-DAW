@@ -10740,6 +10740,21 @@ export const useProjectStore = create<ProjectState>()(
   ),
 );
 
+function _externalSetStateMayReplaceProject(partial: Parameters<typeof useProjectStore.setState>[0]) {
+  if (typeof partial === 'function') return true;
+  if (!partial || typeof partial !== 'object') return false;
+  return 'project' in partial;
+}
+
+const _setProjectStoreState = useProjectStore.setState;
+useProjectStore.setState = ((...args: Parameters<typeof _setProjectStoreState>) => {
+  const [partial, replace] = args;
+  if (replace || _externalSetStateMayReplaceProject(partial)) {
+    _clearAbCompareState();
+  }
+  return _setProjectStoreState(...args);
+}) as typeof useProjectStore.setState;
+
 // Auto-save to project library (IDB) on changes, debounced.
 // Uses requestIdleCallback to defer the IDB write until the browser is idle,
 // keeping it off the critical interaction path (fixes #856).

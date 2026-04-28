@@ -475,6 +475,19 @@ describe('Mix Snapshots Store Actions', () => {
       expect(useProjectStore.getState().getAbActiveSnapshotId()).toBeNull();
     });
 
+    it('external setState project resets clear active A/B state', () => {
+      seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
+      const snap = useProjectStore.getState().saveMixSnapshot('Mix A');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.9 });
+      useProjectStore.getState().toggleAbCompare(snap.id);
+      expect(useProjectStore.getState().isAbComparing()).toBe(true);
+
+      useProjectStore.setState({ project: null });
+
+      expect(useProjectStore.getState().isAbComparing()).toBe(false);
+      expect(useProjectStore.getState().getAbActiveSnapshotId()).toBeNull();
+    });
+
     it('does not mutate project state in viewer mode', () => {
       seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
       const snap = useProjectStore.getState().saveMixSnapshot('Mix A');
