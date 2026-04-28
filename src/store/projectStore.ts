@@ -10765,6 +10765,7 @@ const _scheduleIdle: (cb: () => void) => void =
 
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 let _queuedProjectForLibrarySave: Project | null = null;
+let _lastSavedSourceProjectRef: Project | null = null;
 let _lastSavedProjectRef: Project | null = null;
 let _lastSavedProjectUpdatedAt = 0;
 useProjectStore.subscribe((state) => {
@@ -10779,11 +10780,12 @@ useProjectStore.subscribe((state) => {
       if (!proj) return;
       const projectForSave = _getProjectForPersist(proj);
       if (
-        projectForSave === _lastSavedProjectRef &&
+        (proj === _lastSavedSourceProjectRef || projectForSave === _lastSavedProjectRef) &&
         projectForSave.updatedAt === _lastSavedProjectUpdatedAt
       ) {
         return;
       }
+      _lastSavedSourceProjectRef = proj;
       _lastSavedProjectRef = projectForSave;
       _lastSavedProjectUpdatedAt = projectForSave.updatedAt;
       void saveProjectToIDB(projectForSave);
