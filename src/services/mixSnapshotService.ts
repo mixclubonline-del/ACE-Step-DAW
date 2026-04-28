@@ -26,9 +26,9 @@ export function captureTrackMixState(track: Track): MixSnapshotTrackState {
     compressorRatio: track.compressorRatio,
     reverbMix: track.reverbMix,
     reverbRoomSize: track.reverbRoomSize,
-    effects: track.effects ? structuredClone(track.effects) : undefined,
+    effects: structuredClone(track.effects ?? []),
     effectsBypassed: track.effectsBypassed,
-    sends: track.sends ? structuredClone(track.sends) : undefined,
+    sends: structuredClone(track.sends ?? []),
   };
 }
 
@@ -83,9 +83,9 @@ export function applyTrackMixState(
     compressorRatio: state.compressorRatio,
     reverbMix: state.reverbMix,
     reverbRoomSize: state.reverbRoomSize,
-    effects: state.effects ? structuredClone(state.effects) : track.effects,
+    effects: structuredClone(state.effects ?? []),
     effectsBypassed: state.effectsBypassed,
-    sends: state.sends ? structuredClone(state.sends) : track.sends,
+    sends: structuredClone(state.sends ?? []),
   };
 }
 

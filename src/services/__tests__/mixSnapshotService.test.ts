@@ -146,8 +146,8 @@ describe('captureTrackMixState', () => {
     const state = captureTrackMixState(track);
 
     expect(state.pan).toBeUndefined();
-    expect(state.effects).toBeUndefined();
-    expect(state.sends).toBeUndefined();
+    expect(state.effects).toEqual([]);
+    expect(state.sends).toEqual([]);
     expect(state.effectsBypassed).toBeUndefined();
   });
 });
@@ -308,6 +308,24 @@ describe('applyTrackMixState', () => {
     // Verify deep clone
     result.effects![0].id = 'modified';
     expect(state.effects![0].id).toBe('fx-1');
+  });
+
+  it('clears effects and sends when the snapshot has none', () => {
+    const track = makeTrack({
+      effects: [{ id: 'fx-1', type: 'reverb', enabled: true, params: { decay: 3, mix: 0.4 } }],
+      sends: [{ returnTrackId: 'return-1', amount: 0.6, prePost: 'post' }],
+    });
+    const state: MixSnapshotTrackState = {
+      trackId: 'track-1',
+      volume: 0.75,
+      muted: false,
+      soloed: false,
+    };
+
+    const result = applyTrackMixState(track, state);
+
+    expect(result.effects).toEqual([]);
+    expect(result.sends).toEqual([]);
   });
 });
 

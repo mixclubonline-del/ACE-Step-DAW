@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project, Track, ReturnTrack } from '../../src/types/project';
 import { useProjectStore } from '../../src/store/projectStore';
+import { useCollaborationStore } from '../../src/store/collaborationStore';
+import { saveProject as saveProjectToIDB } from '../../src/services/projectStorage';
 
 vi.mock('../../src/services/projectStorage', () => ({
   saveProject: vi.fn(),
@@ -83,6 +85,12 @@ describe('Mix Snapshots Store Actions', () => {
   beforeEach(() => {
     localStorage.clear();
     useProjectStore.setState(useProjectStore.getInitialState(), true);
+    useCollaborationStore.getState().reset();
+    vi.mocked(saveProjectToIDB).mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   // ── saveMixSnapshot ─────────────────────────────────────────────
@@ -140,6 +148,14 @@ describe('Mix Snapshots Store Actions', () => {
     it('throws if no project is loaded', () => {
       expect(() => useProjectStore.getState().saveMixSnapshot('Test')).toThrow();
     });
+
+    it('throws and does not mutate in viewer mode', () => {
+      seed();
+      useCollaborationStore.getState().setViewerMode(true);
+
+      expect(() => useProjectStore.getState().saveMixSnapshot('Read Only')).toThrow(/viewer mode/i);
+      expect(useProjectStore.getState().project!.mixSnapshots).toBeUndefined();
+    });
   });
 
   // ── loadMixSnapshot ─────────────────────────────────────────────
@@ -192,6 +208,29 @@ describe('Mix Snapshots Store Actions', () => {
       useProjectStore.getState().loadMixSnapshot(snapshot.id);
 
       expect(useProjectStore.getState().project!.masterVolume).toBe(0.8);
+    });
+
+    it('restores empty sends and effects from snapshots', () => {
+      seed({
+        tracks: [
+          makeTrack({
+            id: 't1',
+            sends: [],
+            effects: [],
+          }),
+        ],
+      });
+      const snapshot = useProjectStore.getState().saveMixSnapshot('Dry');
+
+      useProjectStore.getState().updateTrack('t1', {
+        sends: [{ returnTrackId: 'rt1', amount: 0.8, prePost: 'post' }],
+        effects: [{ id: 'fx-1', type: 'reverb', enabled: true, params: { decay: 2.5, mix: 0.4 } }],
+      });
+      useProjectStore.getState().loadMixSnapshot(snapshot.id);
+
+      const track = useProjectStore.getState().project!.tracks[0];
+      expect(track.sends).toEqual([]);
+      expect(track.effects).toEqual([]);
     });
 
     it('does nothing if snapshot ID is invalid', () => {
@@ -312,6 +351,60 @@ describe('Mix Snapshots Store Actions', () => {
       expect(useProjectStore.getState().isAbComparing()).toBe(false);
     });
 
+    it('switches A/B targets while restoring back to the original mix', () => {
+      seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
+      const snapA = useProjectStore.getState().saveMixSnapshot('Mix A');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.7 });
+      const snapB = useProjectStore.getState().saveMixSnapshot('Mix B');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.9 });
+
+      useProjectStore.getState().toggleAbCompare(snapA.id);
+      expect(useProjectStore.getState().project!.tracks[0].volume).toBe(0.5);
+
+      useProjectStore.getState().toggleAbCompare(snapB.id);
+      expect(useProjectStore.getState().project!.tracks[0].volume).toBe(0.7);
+
+      useProjectStore.getState().toggleAbCompare(snapB.id);
+      expect(useProjectStore.getState().project!.tracks[0].volume).toBe(0.9);
+      expect(useProjectStore.getState().isAbComparing()).toBe(false);
+    });
+
+    it('autosaves non-mix edits during A/B while preserving the original mix', async () => {
+      vi.useFakeTimers();
+      seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
+      const snap = useProjectStore.getState().saveMixSnapshot('Mix A');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.9 });
+      useProjectStore.getState().toggleAbCompare(snap.id);
+      expect(useProjectStore.getState().project!.tracks[0].volume).toBe(0.5);
+
+      useProjectStore.getState().renameMixSnapshot(snap.id, 'Renamed During Compare');
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.runOnlyPendingTimersAsync();
+
+      const savedProject = vi.mocked(saveProjectToIDB).mock.calls.at(-1)?.[0];
+      expect(savedProject?.mixSnapshots?.[0].name).toBe('Renamed During Compare');
+      expect(savedProject?.tracks[0].volume).toBe(0.9);
+      expect(useProjectStore.getState().project!.tracks[0].volume).toBe(0.5);
+    });
+
+    it('clears active A/B state before undo and redo history changes', () => {
+      seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
+      const snap = useProjectStore.getState().saveMixSnapshot('Mix A');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.9 });
+      useProjectStore.getState().toggleAbCompare(snap.id);
+      expect(useProjectStore.getState().isAbComparing()).toBe(true);
+
+      useProjectStore.getState().undo();
+
+      expect(useProjectStore.getState().isAbComparing()).toBe(false);
+      expect(useProjectStore.getState().getAbActiveSnapshotId()).toBeNull();
+
+      useProjectStore.getState().redo();
+
+      expect(useProjectStore.getState().isAbComparing()).toBe(false);
+      expect(useProjectStore.getState().getAbActiveSnapshotId()).toBeNull();
+    });
+
     it('loadMixSnapshot exits A/B mode', () => {
       seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
       const snap1 = useProjectStore.getState().saveMixSnapshot('Mix A');
@@ -335,6 +428,62 @@ describe('Mix Snapshots Store Actions', () => {
 
       useProjectStore.getState().deleteMixSnapshot(snap.id);
       expect(useProjectStore.getState().isAbComparing()).toBe(false);
+      expect(useProjectStore.getState().project!.tracks[0].volume).toBe(0.9);
+    });
+
+    it('setProject clears active A/B state', () => {
+      seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
+      const snap = useProjectStore.getState().saveMixSnapshot('Mix A');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.9 });
+      useProjectStore.getState().toggleAbCompare(snap.id);
+      expect(useProjectStore.getState().isAbComparing()).toBe(true);
+
+      useProjectStore.getState().setProject(makeProject({ id: 'project-2' }));
+
+      expect(useProjectStore.getState().isAbComparing()).toBe(false);
+      expect(useProjectStore.getState().getAbActiveSnapshotId()).toBeNull();
+    });
+
+    it('createProject clears active A/B state', () => {
+      seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
+      const snap = useProjectStore.getState().saveMixSnapshot('Mix A');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.9 });
+      useProjectStore.getState().toggleAbCompare(snap.id);
+      expect(useProjectStore.getState().isAbComparing()).toBe(true);
+
+      useProjectStore.getState().createProject({ name: 'Next' });
+
+      expect(useProjectStore.getState().isAbComparing()).toBe(false);
+      expect(useProjectStore.getState().getAbActiveSnapshotId()).toBeNull();
+    });
+
+    it('does not mutate project state in viewer mode', () => {
+      seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
+      const snap = useProjectStore.getState().saveMixSnapshot('Mix A');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.9 });
+      const before = useProjectStore.getState().project!;
+
+      useCollaborationStore.getState().setViewerMode(true);
+      useProjectStore.getState().toggleAbCompare(snap.id);
+
+      expect(useProjectStore.getState().project).toBe(before);
+      expect(useProjectStore.getState().isAbComparing()).toBe(false);
+    });
+
+    it('blocks snapshot load, rename, and delete in viewer mode', () => {
+      seed({ tracks: [makeTrack({ id: 't1', volume: 0.5 })] });
+      const snap = useProjectStore.getState().saveMixSnapshot('Mix A');
+      useProjectStore.getState().updateTrack('t1', { volume: 0.9 });
+
+      useCollaborationStore.getState().setViewerMode(true);
+      useProjectStore.getState().loadMixSnapshot(snap.id);
+      useProjectStore.getState().renameMixSnapshot(snap.id, 'Renamed');
+      useProjectStore.getState().deleteMixSnapshot(snap.id);
+
+      const project = useProjectStore.getState().project!;
+      expect(project.tracks[0].volume).toBe(0.9);
+      expect(project.mixSnapshots).toHaveLength(1);
+      expect(project.mixSnapshots![0].name).toBe('Mix A');
     });
   });
 

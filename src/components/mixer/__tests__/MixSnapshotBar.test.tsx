@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { MixSnapshotBar } from '../MixSnapshotBar';
 import { useProjectStore } from '../../../store/projectStore';
+import { useCollaborationStore } from '../../../store/collaborationStore';
 
 vi.mock('../../../services/projectStorage', () => ({
   saveProject: vi.fn(),
@@ -28,8 +29,10 @@ function setupProject() {
 
 describe('MixSnapshotBar', () => {
   beforeEach(() => {
+    cleanup();
     localStorage.clear();
     useProjectStore.setState(useProjectStore.getInitialState(), true);
+    useCollaborationStore.getState().reset();
     setupProject();
   });
 
@@ -50,6 +53,22 @@ describe('MixSnapshotBar', () => {
     const project = useProjectStore.getState().project!;
     expect(project.mixSnapshots).toHaveLength(1);
     expect(project.mixSnapshots![0].name).toBe('Snapshot 1');
+  });
+
+  it('ignores save clicks when no project is loaded', () => {
+    useProjectStore.setState(useProjectStore.getInitialState(), true);
+    render(<MixSnapshotBar />);
+
+    expect(() => fireEvent.click(screen.getByTestId('save-mix-snapshot-btn'))).not.toThrow();
+    expect(useProjectStore.getState().project).toBeNull();
+  });
+
+  it('ignores save clicks in viewer mode', () => {
+    useCollaborationStore.getState().setViewerMode(true);
+    render(<MixSnapshotBar />);
+
+    expect(() => fireEvent.click(screen.getByTestId('save-mix-snapshot-btn'))).not.toThrow();
+    expect(useProjectStore.getState().project!.mixSnapshots).toBeUndefined();
   });
 
   it('shows snapshot count after saving', () => {

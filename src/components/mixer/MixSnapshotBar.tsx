@@ -7,6 +7,7 @@ const EMPTY_SNAPSHOTS: MixSnapshot[] = [];
 /** Compact mix-snapshot toolbar embedded in the mixer status bar. */
 export const MixSnapshotBar = React.memo(function MixSnapshotBar() {
   const snapshots = useProjectStore((s) => s.project?.mixSnapshots ?? EMPTY_SNAPSHOTS);
+  useProjectStore((s) => s.abCompareRevision);
   const saveMixSnapshot = useProjectStore((s) => s.saveMixSnapshot);
   const loadMixSnapshot = useProjectStore((s) => s.loadMixSnapshot);
   const deleteMixSnapshot = useProjectStore((s) => s.deleteMixSnapshot);
@@ -26,7 +27,11 @@ export const MixSnapshotBar = React.memo(function MixSnapshotBar() {
 
   const handleSave = useCallback(() => {
     const name = `Snapshot ${snapshots.length + 1}`;
-    saveMixSnapshot(name);
+    try {
+      saveMixSnapshot(name);
+    } catch {
+      // Viewer mode and empty project states reject write actions.
+    }
   }, [snapshots.length, saveMixSnapshot]);
 
   const handleStartRename = useCallback((snapshot: MixSnapshot) => {
