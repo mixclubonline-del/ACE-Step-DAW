@@ -123,6 +123,24 @@ describe('WebMidiService', () => {
 
       await expect(service.connect()).rejects.toThrow('Web MIDI API is not supported');
     });
+
+    it('is idempotent and does not duplicate MIDI access or input listeners', async () => {
+      const input = createMockMIDIInput('inp-1', 'Controller');
+      const access = createMockMIDIAccess([input]);
+      const requestMIDIAccess = vi.fn().mockResolvedValue(access);
+      Object.defineProperty(navigator, 'requestMIDIAccess', {
+        value: requestMIDIAccess,
+        writable: true,
+        configurable: true,
+      });
+
+      await service.connect();
+      await service.connect();
+
+      expect(requestMIDIAccess).toHaveBeenCalledTimes(1);
+      expect(input.addEventListener).toHaveBeenCalledTimes(1);
+      expect(access.addEventListener).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('MIDI message handling', () => {
@@ -261,6 +279,21 @@ describe('WebMidiService', () => {
       expect(service.getDevices()).toHaveLength(1);
       expect(service.getDevices()[0].name).toBe('New Device');
       expect(deviceChanges.length).toBeGreaterThan(0);
+    });
+
+    it('detaches MIDI message listener when an input disconnects', async () => {
+      const input = createMockMIDIInput('inp-1', 'Controller');
+      const access = createMockMIDIAccess([input]);
+      Object.defineProperty(navigator, 'requestMIDIAccess', {
+        value: vi.fn().mockResolvedValue(access),
+        writable: true,
+        configurable: true,
+      });
+
+      await service.connect();
+      access._emitStateChange({ ...input, type: 'input', state: 'disconnected' });
+
+      expect(input.removeEventListener).toHaveBeenCalledWith('midimessage', expect.any(Function));
     });
   });
 

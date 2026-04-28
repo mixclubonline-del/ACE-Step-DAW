@@ -215,5 +215,25 @@ describe('midiControllerStore', () => {
       expect(useMidiControllerStore.getState().mappings).toHaveLength(2);
       expect(useMidiControllerStore.getState().mappings[0].id).toBe('imported-1');
     });
+
+    it('rejects invalid import payloads and deduplicates mappings by MIDI input', () => {
+      const preset = {
+        version: 1,
+        name: 'Imported',
+        mappings: [
+          makeMapping({ id: 'valid-1' }),
+          makeMapping({ id: 'duplicate-input', targetParam: 'track:t2:volume' }),
+          { id: 'bad-control-type', controlType: 'sysex', targetParam: 'track:t3:volume' },
+          { id: 'bad-device', deviceName: 'Controller', channel: 0, controlType: 'cc', controlNumber: 10 },
+        ],
+        exportedAt: new Date().toISOString(),
+      };
+
+      useMidiControllerStore.getState().importMappings(preset as never);
+
+      const mappings = useMidiControllerStore.getState().mappings;
+      expect(mappings).toHaveLength(1);
+      expect(mappings[0].id).toBe('valid-1');
+    });
   });
 });

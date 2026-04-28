@@ -8,9 +8,9 @@
  *    transportStore, and master volume
  * 4. Handles MIDI Learn mode (auto-completes mapping on CC/NoteOn input)
  *
- * Mount this once at the app root level (AppShell).
+ * Mount this once in the editor shell.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useMidiControllerStore } from '../store/midiControllerStore';
 import { getWebMidiService, WebMidiService } from '../services/webMidiService';
@@ -62,7 +62,6 @@ function handleTransportParam(target: ResolvedTarget, value: number): void {
 
 export function useMidiController(): void {
   const enabled = useMidiControllerStore((s) => s.enabled);
-  const connectedRef = useRef(false);
 
   useEffect(() => {
     if (!enabled || !WebMidiService.isSupported()) return;
@@ -79,7 +78,6 @@ export function useMidiController(): void {
     service.connect()
       .then((devices) => {
         useMidiControllerStore.getState().setDevices(devices);
-        connectedRef.current = true;
       })
       .catch(() => {
         // Silently fail — panel will show error if user opens it

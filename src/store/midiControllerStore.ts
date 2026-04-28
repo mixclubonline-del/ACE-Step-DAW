@@ -71,6 +71,47 @@ const INITIAL_LEARN_STATE: MidiLearnState = {
   targetLabel: null,
 };
 
+const MIDI_CONTROL_TYPES: MidiControlType[] = ['cc', 'note', 'pitchBend'];
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+function validateImportedMapping(value: unknown): MidiMapping | null {
+  if (!value || typeof value !== 'object') return null;
+  const mapping = value as Partial<MidiMapping>;
+  if (typeof mapping.id !== 'string' || mapping.id.trim() === '') return null;
+  if (typeof mapping.deviceId !== 'string' || mapping.deviceId.trim() === '') return null;
+  if (typeof mapping.deviceName !== 'string' || mapping.deviceName.trim() === '') return null;
+  if (typeof mapping.targetParam !== 'string' || mapping.targetParam.trim() === '') return null;
+  if (typeof mapping.targetLabel !== 'string' || mapping.targetLabel.trim() === '') return null;
+  if (!mapping.controlType || !MIDI_CONTROL_TYPES.includes(mapping.controlType)) return null;
+  if (!isFiniteNumber(mapping.channel) || !isFiniteNumber(mapping.controlNumber)) return null;
+
+  const channel = clampInt(mapping.channel, 0, 15);
+  const maxControl = mapping.controlType === 'pitchBend' ? 0 : 127;
+  const controlNumber = clampInt(mapping.controlNumber, 0, maxControl);
+  const min = isFiniteNumber(mapping.min) ? mapping.min : 0;
+  const max = isFiniteNumber(mapping.max) ? mapping.max : 1;
+
+  return {
+    id: mapping.id,
+    deviceId: mapping.deviceId,
+    deviceName: mapping.deviceName,
+    channel,
+    controlType: mapping.controlType,
+    controlNumber,
+    targetParam: mapping.targetParam,
+    targetLabel: mapping.targetLabel,
+    min,
+    max,
+  };
+}
+
 export const useMidiControllerStore = create<MidiControllerState>()(
   persist(
     (set, get) => ({
@@ -177,22 +218,18 @@ export const useMidiControllerStore = create<MidiControllerState>()(
       }),
 
       importMappings: (preset) => {
-        if (!preset || !Array.isArray(preset.mappings)) return;
+        if (!preset || preset.version !== 1 || !Array.isArray(preset.mappings)) return;
 
-        // Validate and deduplicate incoming mappings
         const seen = new Set<string>();
-        const validated = preset.mappings.filter((m) => {
-          if (!m || typeof m.id !== 'string' || typeof m.targetParam !== 'string') return false;
-          if (typeof m.controlNumber !== 'number' || typeof m.channel !== 'number') return false;
-          const key = `${m.deviceId}:${m.channel}:${m.controlType}:${m.controlNumber}`;
-          if (seen.has(key)) return false;
+        const validated: MidiMapping[] = [];
+        for (const value of preset.mappings) {
+          const mapping = validateImportedMapping(value);
+          if (!mapping) continue;
+          const key = `${mapping.deviceId}:${mapping.channel}:${mapping.controlType}:${mapping.controlNumber}`;
+          if (seen.has(key)) continue;
           seen.add(key);
-          return true;
-        }).map((m) => ({
-          ...m,
-          min: typeof m.min === 'number' && isFinite(m.min) ? m.min : 0,
-          max: typeof m.max === 'number' && isFinite(m.max) ? m.max : 1,
-        }));
+          validated.push(mapping);
+        }
 
         set({ mappings: validated });
       },

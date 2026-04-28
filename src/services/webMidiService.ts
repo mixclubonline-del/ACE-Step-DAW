@@ -88,6 +88,7 @@ export class WebMidiService {
     });
 
     this.inputHandlers.clear();
+    this.stateChangeHandler = null;
     this.messageListeners.clear();
     this.deviceChangeListeners.clear();
     this.access = null;
@@ -118,8 +119,20 @@ export class WebMidiService {
     this.inputHandlers.set(input.id, handler);
   }
 
+  private detachInput(inputId: string): void {
+    const handler = this.inputHandlers.get(inputId);
+    const input = this.access?.inputs.get(inputId);
+    if (handler && input) {
+      input.removeEventListener('midimessage', handler);
+    }
+    this.inputHandlers.delete(inputId);
+  }
+
   private watchStateChanges(): void {
     if (!this.access) return;
+    if (this.stateChangeHandler) {
+      this.access.removeEventListener('statechange', this.stateChangeHandler);
+    }
 
     this.stateChangeHandler = (e: Event) => {
       const event = e as MIDIConnectionEvent;
@@ -129,8 +142,9 @@ export class WebMidiService {
       if (port.type === 'input') {
         if (port.state === 'connected') {
           this.attachInput(port as MIDIInput);
+        } else {
+          this.detachInput(port.id);
         }
-        // Re-scan and notify
         const devices = this.getDevices();
         this.deviceChangeListeners.forEach((listener) => listener(devices));
       }
