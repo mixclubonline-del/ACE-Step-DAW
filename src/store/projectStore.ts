@@ -3585,7 +3585,6 @@ export const useProjectStore = create<ProjectState>()(
       ? _applyMixStateToProject(state.project, previousMixState)
       : state.project;
 
-    // Exit A/B mode if active
     _clearAbCompareState();
     const abCompareRevision = state.abCompareRevision + 1;
 
