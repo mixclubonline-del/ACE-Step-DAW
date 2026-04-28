@@ -212,6 +212,62 @@ describe('Generation Advanced Controls — Style Tags', () => {
     expect(updatedClip?.generationParams?.voiceProfileId).toBe('saved-voice');
     expect(updatedClip?.generationParams?.audioInfluence).toBe(70);
     expect(updatedClip?.generationParams?.styleInfluence).toBe(30);
+    const voice = useVoiceStore.getState().getVoiceById('saved-voice');
+    expect(voice?.defaultAudioInfluence).toBe(20);
+    expect(voice?.defaultStyleInfluence).toBe(80);
+  });
+
+  it('does not use stale selected voice when the edited clip voice is missing', async () => {
+    useVoiceStore.setState({
+      voices: [{
+        id: 'stale-voice',
+        name: 'Stale Voice',
+        createdAt: 1,
+        updatedAt: 1,
+        audioKey: 'voice-audio:stale',
+        durationSeconds: 12,
+        skillLevel: 'professional',
+        tags: [],
+        defaultAudioInfluence: 95,
+        defaultStyleInfluence: 95,
+        source: 'upload',
+      }],
+      selectedVoiceId: 'stale-voice',
+      searchQuery: '',
+      filterTag: null,
+    });
+    const track = useProjectStore.getState().project!.tracks[0];
+    const clip = useProjectStore.getState().addClip(track.id, {
+      startTime: 0,
+      duration: 30,
+      prompt: 'missing voice prompt',
+      lyrics: 'missing voice lyrics',
+      source: 'generated',
+    });
+    useProjectStore.getState().updateClip(clip.id, {
+      generationParams: {
+        type: 'text2music',
+        prompt: 'missing voice prompt',
+        lyrics: 'missing voice lyrics',
+        durationSeconds: 30,
+        voiceProfileId: 'missing-voice',
+        audioInfluence: 70,
+        styleInfluence: 30,
+      },
+    });
+    useUIStore.getState().setEditingText2MusicClipId(clip.id);
+
+    renderForm();
+
+    await waitFor(() => {
+      expect(useVoiceStore.getState().selectedVoiceId).toBeNull();
+    });
+    mockOnFooterChange.mock.calls.at(-1)?.[0].action();
+
+    const updatedClip = useProjectStore.getState().project!.tracks[0].clips.find((item) => item.id === clip.id);
+    expect(updatedClip?.generationParams?.voiceProfileId).toBe('missing-voice');
+    expect(updatedClip?.generationParams?.audioInfluence).toBe(70);
+    expect(updatedClip?.generationParams?.styleInfluence).toBe(30);
   });
 });
 

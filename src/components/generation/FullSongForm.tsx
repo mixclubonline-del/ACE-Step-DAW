@@ -15,7 +15,6 @@ import { VoiceInfluenceControls } from './VoiceInfluenceControls';
 import { VoiceLibraryPanel } from '../voice/VoiceLibraryPanel';
 import { TimbrePresetPicker } from './TimbrePresetPicker';
 import { NegativePromptSection } from './NegativePromptSection';
-import { clampInfluence } from '../../types/voice';
 
 /** Magic pen icon for AI enhance buttons */
 function MagicPenIcon({ size = 16 }: { size?: number }) {
@@ -191,9 +190,16 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
     editingClipId ? s.project?.tracks.flatMap((t) => t.clips).find((c) => c.id === editingClipId) : undefined,
   );
   const hydratedClipIdRef = useRef<string | null>(null);
+  const hydratedVoiceDefaultsRef = useRef<{
+    clipId: string;
+    voiceProfileId: string;
+    audioInfluence: number;
+    styleInfluence: number;
+  } | null>(null);
   useEffect(() => {
     if (!editingClipId || !editingClip || hydratedClipIdRef.current === editingClipId) return;
     hydratedClipIdRef.current = editingClipId;
+    hydratedVoiceDefaultsRef.current = null;
     const p = editingClip.generationParams;
     if (p) {
       setPrompt(p.prompt);
@@ -246,17 +252,15 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
         const voiceStore = useVoiceStore.getState();
         const savedVoice = voiceStore.getVoiceById(p.voiceProfileId);
         if (savedVoice) {
-          const influenceUpdates: Parameters<typeof voiceStore.updateVoice>[1] = {};
-          if (p.audioInfluence !== undefined) {
-            influenceUpdates.defaultAudioInfluence = clampInfluence(p.audioInfluence);
-          }
-          if (p.styleInfluence !== undefined) {
-            influenceUpdates.defaultStyleInfluence = clampInfluence(p.styleInfluence);
-          }
-          if (Object.keys(influenceUpdates).length > 0) {
-            voiceStore.updateVoice(savedVoice.id, influenceUpdates);
-          }
+          hydratedVoiceDefaultsRef.current = {
+            clipId: editingClipId,
+            voiceProfileId: savedVoice.id,
+            audioInfluence: savedVoice.defaultAudioInfluence,
+            styleInfluence: savedVoice.defaultStyleInfluence,
+          };
           voiceStore.selectVoice(savedVoice.id);
+        } else {
+          voiceStore.deselectVoice();
         }
       }
     } else {
@@ -276,6 +280,7 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
   useEffect(() => {
     if (!editingClipId) {
       hydratedClipIdRef.current = null;
+      hydratedVoiceDefaultsRef.current = null;
       setLegacyGuidanceScale(null);
     }
   }, [editingClipId]);
@@ -311,11 +316,30 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
         ? useVoiceStore.getState().getVoiceById(selectedVoiceId)
         : undefined;
       const voiceProfileId = selectedVoiceProfile?.id ?? previousParams?.voiceProfileId;
+      const selectedVoiceWasHydrated = Boolean(
+        selectedVoiceProfile &&
+        previousParams?.voiceProfileId === selectedVoiceProfile.id &&
+        hydratedVoiceDefaultsRef.current?.clipId === editingClipId &&
+        hydratedVoiceDefaultsRef.current.voiceProfileId === selectedVoiceProfile.id,
+      );
+      const selectedVoiceChangedSinceHydration = Boolean(
+        selectedVoiceProfile &&
+        selectedVoiceWasHydrated &&
+        hydratedVoiceDefaultsRef.current &&
+        (
+          hydratedVoiceDefaultsRef.current.audioInfluence !== selectedVoiceProfile.defaultAudioInfluence ||
+          hydratedVoiceDefaultsRef.current.styleInfluence !== selectedVoiceProfile.defaultStyleInfluence
+        ),
+      );
       const audioInfluence = selectedVoiceProfile
-        ? selectedVoiceProfile.defaultAudioInfluence
+        ? (selectedVoiceWasHydrated && !selectedVoiceChangedSinceHydration
+          ? (previousParams?.audioInfluence ?? selectedVoiceProfile.defaultAudioInfluence)
+          : selectedVoiceProfile.defaultAudioInfluence)
         : previousParams?.audioInfluence;
       const styleInfluence = selectedVoiceProfile
-        ? selectedVoiceProfile.defaultStyleInfluence
+        ? (selectedVoiceWasHydrated && !selectedVoiceChangedSinceHydration
+          ? (previousParams?.styleInfluence ?? selectedVoiceProfile.defaultStyleInfluence)
+          : selectedVoiceProfile.defaultStyleInfluence)
         : previousParams?.styleInfluence;
       store.updateClip(editingClipId, {
         generationParams: {
