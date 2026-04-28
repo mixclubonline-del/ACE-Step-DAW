@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import type { ChangeEvent } from 'react';
 import { useVoiceStore } from '../../store/voiceStore';
 import {
   DEFAULT_AUDIO_INFLUENCE,
@@ -32,14 +33,14 @@ export function VoiceInfluenceControls() {
   );
 
   const handleAudioChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => updateInfluence({
+    (e: ChangeEvent<HTMLInputElement>) => updateInfluence({
       defaultAudioInfluence: clampInfluence(Number(e.target.value)),
     }),
     [updateInfluence],
   );
 
   const handleStyleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => updateInfluence({
+    (e: ChangeEvent<HTMLInputElement>) => updateInfluence({
       defaultStyleInfluence: clampInfluence(Number(e.target.value)),
     }),
     [updateInfluence],
