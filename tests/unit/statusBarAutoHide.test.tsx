@@ -37,20 +37,22 @@ describe('StatusBar auto-hide', () => {
   it('expands on mouseenter when auto-hide is enabled', () => {
     useUIStore.setState({ statusBarAutoHide: true });
     render(<StatusBar />);
+    const hoverZone = screen.getByTestId('status-bar-hover-zone');
     const bar = screen.getByTestId('status-bar');
-    fireEvent.mouseEnter(bar);
+    fireEvent.mouseEnter(hoverZone);
     expect(bar.className).not.toContain('status-bar-collapsed');
   });
 
-  it('collapses on mouseleave when auto-hide is enabled', () => {
+  it('collapses when the status bar hover zone is left', () => {
     useUIStore.setState({ statusBarAutoHide: true });
     render(<StatusBar />);
+    const hoverZone = screen.getByTestId('status-bar-hover-zone');
     const bar = screen.getByTestId('status-bar');
 
-    fireEvent.mouseEnter(bar);
+    fireEvent.mouseEnter(hoverZone);
     expect(bar.className).not.toContain('status-bar-collapsed');
 
-    fireEvent.mouseLeave(bar);
+    fireEvent.mouseLeave(hoverZone);
     expect(bar.className).toContain('status-bar-collapsed');
   });
 
@@ -68,7 +70,7 @@ describe('StatusBar auto-hide', () => {
     expect(saveDot).toBeInTheDocument();
   });
 
-  it('renders proximity sentinel div when collapsed for easier hover target', () => {
+  it('renders proximity sentinel div when auto-hide is enabled for easier hover target', () => {
     useUIStore.setState({ statusBarAutoHide: true });
     render(<StatusBar />);
     const sentinel = screen.getByTestId('status-bar-sentinel');
@@ -82,6 +84,20 @@ describe('StatusBar auto-hide', () => {
     fireEvent.mouseEnter(sentinel);
     const bar = screen.getByTestId('status-bar');
     expect(bar.className).not.toContain('status-bar-collapsed');
+  });
+
+  it('collapses after sentinel expansion when the hover zone is left', () => {
+    useUIStore.setState({ statusBarAutoHide: true });
+    render(<StatusBar />);
+    const hoverZone = screen.getByTestId('status-bar-hover-zone');
+    const sentinel = screen.getByTestId('status-bar-sentinel');
+    const bar = screen.getByTestId('status-bar');
+
+    fireEvent.mouseEnter(sentinel);
+    expect(bar.className).not.toContain('status-bar-collapsed');
+
+    fireEvent.mouseLeave(hoverZone);
+    expect(bar.className).toContain('status-bar-collapsed');
   });
 
   it('does NOT render sentinel when auto-hide is off', () => {
@@ -128,8 +144,12 @@ describe('StatusBar auto-hide persistence', () => {
   it('statusBarAutoHide is included in persisted state', () => {
     useUIStore.getState().setStatusBarAutoHide(true);
     expect(useUIStore.getState().statusBarAutoHide).toBe(true);
+    let persisted = JSON.parse(localStorage.getItem('ace-step-daw-ui') || '{}');
+    expect(persisted.state.statusBarAutoHide).toBe(true);
 
     useUIStore.getState().setStatusBarAutoHide(false);
     expect(useUIStore.getState().statusBarAutoHide).toBe(false);
+    persisted = JSON.parse(localStorage.getItem('ace-step-daw-ui') || '{}');
+    expect(persisted.state.statusBarAutoHide).toBe(false);
   });
 });

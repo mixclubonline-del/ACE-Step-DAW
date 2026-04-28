@@ -97,20 +97,23 @@ export function StatusBar({ saveStatus, lastSavedAt }: StatusBarProps) {
   }, 0);
 
   return (
-    <>
-      {/* Proximity sentinel — larger hover target when collapsed (24px invisible zone above the bar) */}
-      {statusBarAutoHide && isCollapsed && (
+    <div
+      className="relative"
+      data-testid="status-bar-hover-zone"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Proximity sentinel: larger hover target above the bar without taking layout space. */}
+      {statusBarAutoHide && (
         <div
-          className="h-6 w-full"
+          className="absolute bottom-full left-0 h-6 w-full"
           data-testid="status-bar-sentinel"
-          onMouseEnter={() => setHovered(true)}
+          aria-hidden="true"
         />
       )}
       <div
         className={`status-bar border-t border-daw-border-strong bg-daw-surface-2 text-[10px] text-daw-text-muted overflow-hidden ${isCollapsed ? 'status-bar-collapsed' : ''}`}
         data-testid="status-bar"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
       >
         {/* Collapsed mini-row: only critical dots visible within the 8px clamp */}
         {isCollapsed && (
@@ -271,6 +274,6 @@ export function StatusBar({ saveStatus, lastSavedAt }: StatusBarProps) {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
