@@ -7,9 +7,10 @@
  * @see https://github.com/ace-step/ACE-Step-DAW/issues/974
  */
 
-import { get, set, keys } from 'idb-keyval';
+import { createStore, get, set, del, keys } from 'idb-keyval';
 
 const META_PREFIX = 'meta:';
+const metaStore = createStore('ace-step-project-organization', 'project-meta');
 
 export interface ProjectMeta {
   projectId: string;
@@ -42,23 +43,27 @@ function defaultMeta(projectId: string): ProjectMeta {
 }
 
 export async function getProjectMeta(projectId: string): Promise<ProjectMeta> {
-  const data = await get<ProjectMeta>(metaKey(projectId));
+  const data = await get<ProjectMeta>(metaKey(projectId), metaStore);
   return data ?? defaultMeta(projectId);
 }
 
 export async function setProjectMeta(meta: ProjectMeta): Promise<void> {
-  await set(metaKey(meta.projectId), meta);
+  await set(metaKey(meta.projectId), meta, metaStore);
+}
+
+export async function deleteProjectMeta(projectId: string): Promise<void> {
+  await del(metaKey(projectId), metaStore);
 }
 
 export async function listProjectMetas(): Promise<ProjectMeta[]> {
-  const allKeys = await keys();
+  const allKeys = await keys(metaStore);
   const metaKeys = allKeys.filter(
     (k) => typeof k === 'string' && k.startsWith(META_PREFIX),
   ) as string[];
 
   const metas: ProjectMeta[] = [];
   for (const key of metaKeys) {
-    const data = await get<ProjectMeta>(key);
+    const data = await get<ProjectMeta>(key, metaStore);
     if (data) metas.push(data);
   }
   return metas;

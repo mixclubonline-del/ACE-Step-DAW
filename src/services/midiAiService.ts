@@ -7,24 +7,15 @@
  * - Polls for results
  * - Deserializes generated MIDI back to MidiNote[]
  */
-import { getBackendUrl } from './aceStepApi';
 import type { MidiGenerationTaskParams, MidiGenerationResultItem } from '../types/api';
 import type { MidiNote } from '../types/project';
 import { useMidiAiStore } from '../store/midiAiStore';
 import type { MidiAiVariation } from '../store/midiAiStore';
+import { getApiBaseUrl as getApiBase } from './unifiedTaskRouter';
 import { createDebugLogger } from '../utils/debugLogger';
 import { generateNoteId } from '../components/pianoroll/PianoRollConstants';
 
 const logger = createDebugLogger('ace-step:midi-ai');
-
-/** Resolve API base URL, matching the pattern in aceStepApi.ts */
-function getApiBase(): string {
-  const custom = getBackendUrl();
-  if (custom && custom.trim()) {
-    return custom.trim().replace(/\/+$/, '');
-  }
-  return '/api';
-}
 
 /**
  * Construct an absolute WebSocket URL from the API base.
@@ -121,8 +112,9 @@ export async function submitMidiGeneration(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MIDI_GENERATE_TIMEOUT_MS);
 
-  // Chain external signal to internal controller
-  signal?.addEventListener('abort', () => controller.abort());
+  // Chain external signal to internal controller with cleanup
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
 
   try {
     const res = await fetch(`${base}/v1/midi/generate`, {
@@ -141,6 +133,7 @@ export async function submitMidiGeneration(
     return data.task_id;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -173,13 +166,11 @@ export async function pollMidiResult(
       throw new Error(data.error ?? 'MIDI generation failed on the server');
     }
 
-    // Wait before next poll (abortable)
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, POLL_INTERVAL_MS);
-      signal?.addEventListener('abort', () => {
-        clearTimeout(timer);
-        reject(new Error('MIDI generation cancelled'));
-      });
+    // Wait before next poll (abortable, with listener cleanup)
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => { clearTimeout(timer); reject(new Error('MIDI generation cancelled')); };
+      const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, POLL_INTERVAL_MS);
+      signal?.addEventListener('abort', onAbort, { once: true });
     });
   }
 

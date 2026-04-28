@@ -15,16 +15,17 @@ import {
 import { deleteAllProjectAudio } from '../../services/audioFileManager';
 import { toastSuccess, toastError } from '../../hooks/useToast';
 import {
-  listVersions,
+  listVersionMetadata,
   loadVersion,
   deleteVersion,
+  deleteAllVersions,
   saveVersion,
+  type VersionMetadata,
   type VersionSnapshot,
 } from '../../services/versionHistory';
 import {
-  getProjectMeta,
-  setProjectMeta,
   listProjectMetas,
+  deleteProjectMeta,
   toggleFavorite,
   setProjectFolder,
   addProjectTag,
@@ -33,85 +34,24 @@ import {
   type ProjectMeta,
   type ProjectSearchFilter,
 } from '../../services/projectOrganization';
-import { exportProjectToMidi, parseMidiFile } from '../../services/midiFile';
+import { exportProjectToMidi } from '../../services/midiFile';
 
 type DialogTab = 'projects' | 'versions';
 
-// ── MIDI Import Helper ──
-
-function importMidiFile(
-  currentProject: Project | null,
-  setProject: (p: Project) => void,
-  onClose: () => void,
-) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.mid,.midi';
-  input.onchange = async () => {
-    const file = input.files?.[0];
-    if (!file) return;
-    try {
-      const buffer = await file.arrayBuffer();
-      const midiData = parseMidiFile(new Uint8Array(buffer));
-      const dataTracks = midiData.tracks.filter((t) => t.notes.length > 0);
-      if (dataTracks.length === 0) {
-        toastError('No MIDI notes found in file');
-        return;
-      }
-      // Create project tracks from MIDI data
-      const newTracks = dataTracks.map((mt, i) => ({
-        id: `midi-import-${Date.now()}-${i}`,
-        trackName: 'custom' as const,
-        trackType: 'pianoRoll' as const,
-        displayName: mt.name || `MIDI Track ${i + 1}`,
-        color: ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c'][i % 6],
-        volume: 0.8,
-        clips: [{
-          id: `midi-clip-${Date.now()}-${i}`,
-          startTime: 0,
-          duration: Math.max(...mt.notes.map((n) => (n.startBeat + n.durationBeats) * 60 / midiData.bpm), 4),
-          audioUrl: '',
-          generationParams: {} as Project['tracks'][0]['clips'][0]['generationParams'],
-          midiData: {
-            notes: mt.notes.map((n, ni) => ({
-              id: `note-${Date.now()}-${i}-${ni}`,
-              pitch: n.pitch,
-              startBeat: n.startBeat,
-              durationBeats: n.durationBeats,
-              velocity: n.velocity,
-            })),
-            grid: { resolution: 16, swing: 0 },
-          },
-        }],
-        localCaption: '',
-      })) as unknown as Project['tracks'];
-
-      const projectId = `proj-midi-${Date.now()}`;
-      const now = Date.now();
-      const project: Project = {
-        id: projectId,
-        name: file.name.replace(/\.(mid|midi)$/i, ''),
-        createdAt: now,
-        updatedAt: now,
-        bpm: midiData.bpm,
-        keyScale: 'C major',
-        timeSignature: midiData.timeSignatureNumerator,
-        timeSignatureDenominator: midiData.timeSignatureDenominator,
-        totalDuration: Math.max(...newTracks.flatMap((t) => t.clips.map((c) => c.startTime + c.duration)), 16),
-        tracks: newTracks,
-        generationDefaults: currentProject?.generationDefaults ?? {} as Project['generationDefaults'],
-      };
-
-      if (currentProject) await saveProject(currentProject);
-      setProject(project);
-      await saveProject(project);
-      toastSuccess(`Imported ${dataTracks.length} MIDI track${dataTracks.length > 1 ? 's' : ''}`);
-      onClose();
-    } catch {
-      toastError('Failed to parse MIDI file');
-    }
+function createDefaultProjectMeta(projectId: string): ProjectMeta {
+  return {
+    projectId,
+    folder: null,
+    tags: [],
+    isFavorite: false,
+    color: null,
+    notes: '',
   };
-  input.click();
+}
+
+function getVersionMetadata(snapshot: VersionSnapshot): VersionMetadata {
+  const { project: _project, ...metadata } = snapshot;
+  return metadata;
 }
 
 // ── Version History Panel ──
@@ -123,38 +63,71 @@ function VersionHistoryPanel({
   projectId: string | null;
   onRestore: (project: Project) => void;
 }) {
-  const [versions, setVersions] = useState<VersionSnapshot[]>([]);
+  const [versions, setVersions] = useState<VersionMetadata[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!projectId) return;
-    setLoading(true);
-    listVersions(projectId).then((v) => {
-      setVersions(v);
+    if (!projectId) {
+      setVersions([]);
       setLoading(false);
-    });
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    listVersionMetadata(projectId)
+      .then((v) => {
+        if (!cancelled) {
+          setVersions(v);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          toastError('Failed to load versions');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
-  const handleRestore = async (v: VersionSnapshot) => {
-    const full = await loadVersion(v.projectId, v.id);
-    if (full?.project) {
-      onRestore(full.project);
-      toastSuccess(`Restored version from ${formatDateTime(v.savedAt)}`);
+  const handleRestore = async (v: VersionMetadata) => {
+    try {
+      const full = await loadVersion(v.projectId, v.id);
+      if (full?.project) {
+        onRestore(full.project);
+        toastSuccess(`Restored version from ${formatDateTime(v.savedAt)}`);
+      }
+    } catch {
+      toastError('Failed to restore version');
     }
   };
 
-  const handleDelete = async (v: VersionSnapshot) => {
-    await deleteVersion(v.projectId, v.id);
-    setVersions((prev) => prev.filter((x) => x.id !== v.id));
+  const handleDelete = async (v: VersionMetadata) => {
+    try {
+      await deleteVersion(v.projectId, v.id);
+      setVersions((prev) => prev.filter((x) => x.id !== v.id));
+    } catch {
+      toastError('Failed to delete version');
+    }
   };
 
   const handleSaveNow = async () => {
     if (!projectId) return;
     const project = useProjectStore.getState().project;
     if (!project) return;
-    const snapshot = await saveVersion(project, 'Manual save');
-    setVersions((prev) => [snapshot, ...prev]);
-    toastSuccess('Version saved');
+    try {
+      const snapshot = await saveVersion(project, 'Manual save', 'manual');
+      setVersions((prev) => [getVersionMetadata(snapshot), ...prev]);
+      toastSuccess('Version saved');
+    } catch {
+      toastError('Failed to save version');
+    }
   };
 
   if (!projectId) {
@@ -234,30 +207,46 @@ function ProjectMetaRow({
   const [folderInput, setFolderInput] = useState('');
 
   const handleToggleFav = async () => {
-    const updated = await toggleFavorite(projectId);
-    onUpdate(updated);
+    try {
+      const updated = await toggleFavorite(projectId);
+      onUpdate(updated);
+    } catch {
+      toastError('Failed to update favorite');
+    }
   };
 
   const handleAddTag = async () => {
     const tag = tagInput.trim();
     if (!tag) return;
-    const updated = await addProjectTag(projectId, tag);
-    onUpdate(updated);
-    setTagInput('');
-    setShowTagInput(false);
+    try {
+      const updated = await addProjectTag(projectId, tag);
+      onUpdate(updated);
+      setTagInput('');
+      setShowTagInput(false);
+    } catch {
+      toastError('Failed to add tag');
+    }
   };
 
   const handleRemoveTag = async (tag: string) => {
-    const updated = await removeProjectTag(projectId, tag);
-    onUpdate(updated);
+    try {
+      const updated = await removeProjectTag(projectId, tag);
+      onUpdate(updated);
+    } catch {
+      toastError('Failed to remove tag');
+    }
   };
 
   const handleSetFolder = async () => {
     const folder = folderInput.trim() || null;
-    const updated = await setProjectFolder(projectId, folder);
-    onUpdate(updated);
-    setShowFolderInput(false);
-    setFolderInput('');
+    try {
+      const updated = await setProjectFolder(projectId, folder);
+      onUpdate(updated);
+      setShowFolderInput(false);
+      setFolderInput('');
+    } catch {
+      toastError('Failed to set folder');
+    }
   };
 
   return (
@@ -342,6 +331,8 @@ export function ProjectListDialog() {
   const currentProject = useProjectStore((s) => s.project);
   const setProject = useProjectStore((s) => s.setProject);
   const saveProjectAsTemplate = useProjectStore((s) => s.saveProjectAsTemplate);
+  const createProject = useProjectStore((s) => s.createProject);
+  const importStoreMidiFile = useProjectStore((s) => s.importMidiFile);
 
   const [tab, setTab] = useState<DialogTab>('projects');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -357,11 +348,20 @@ export function ProjectListDialog() {
   useEffect(() => {
     if (show) {
       setLoading(true);
+      setProjects([]);
       Promise.all([listProjects(), listProjectMetas()]).then(([list, metas]) => {
         setProjects(list);
         const metaMap = new Map<string, ProjectMeta>();
         for (const m of metas) metaMap.set(m.projectId, m);
+        for (const project of list) {
+          if (!metaMap.has(project.id)) {
+            metaMap.set(project.id, createDefaultProjectMeta(project.id));
+          }
+        }
         setProjectMetas(metaMap);
+      }).catch(() => {
+        toastError('Failed to load projects');
+      }).finally(() => {
         setLoading(false);
       });
     }
@@ -402,27 +402,42 @@ export function ProjectListDialog() {
   if (!show) return null;
 
   const handleOpen = async (id: string) => {
-    // Save current project first
-    if (currentProject) {
-      await saveProject(currentProject);
-    }
-    const project = await loadProject(id);
-    if (project) {
-      setProject(project);
-      toastSuccess('Project loaded');
-      setShow(false);
+    try {
+      // Save current project first
+      if (currentProject) {
+        await saveProject(currentProject);
+      }
+      const project = await loadProject(id);
+      if (project) {
+        setProject(project);
+        toastSuccess('Project loaded');
+        setShow(false);
+      }
+    } catch {
+      toastError('Failed to load project');
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    await deleteProject(id);
-    await deleteAllProjectAudio(id);
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-    // If deleting the current project, clear workspace
-    if (id === currentProject?.id) {
-      setProject(null as unknown as Project);
-      setShow(false);
+    try {
+      await deleteProject(id);
+      await deleteAllProjectAudio(id);
+      await deleteProjectMeta(id);
+      await deleteAllVersions(id);
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setProjectMetas((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+      // If deleting the current project, clear workspace
+      if (id === currentProject?.id) {
+        createProject();
+        setShow(false);
+      }
+    } catch {
+      toastError('Failed to delete project');
     }
   };
 
@@ -431,6 +446,8 @@ export function ProjectListDialog() {
     setExporting(true);
     try {
       await exportProjectArchive(currentProject);
+    } catch {
+      toastError('Failed to export project');
     } finally {
       setExporting(false);
     }
@@ -438,22 +455,30 @@ export function ProjectListDialog() {
 
   const handleSaveAsTemplate = async () => {
     if (!currentProject || !templateName.trim()) return;
-    const template = saveProjectAsTemplate(templateName);
-    await saveTemplate(template);
-    toastSuccess(`Template "${template.name}" saved`);
-    setShowTemplateName(false);
-    setTemplateName('');
+    try {
+      const template = saveProjectAsTemplate(templateName);
+      await saveTemplate(template);
+      toastSuccess(`Template "${template.name}" saved`);
+      setShowTemplateName(false);
+      setTemplateName('');
+    } catch {
+      toastError('Failed to save template');
+    }
   };
 
   const handleImport = async () => {
-    const project = await importProjectArchive();
-    if (project) {
-      if (currentProject) {
-        await saveProject(currentProject);
+    try {
+      const project = await importProjectArchive();
+      if (project) {
+        if (currentProject) {
+          await saveProject(currentProject);
+        }
+        setProject(project);
+        toastSuccess('Project loaded');
+        setShow(false);
       }
-      setProject(project);
-      toastSuccess('Project loaded');
-      setShow(false);
+    } catch {
+      toastError('Failed to import project');
     }
   };
 
@@ -475,7 +500,7 @@ export function ProjectListDialog() {
       a.href = url;
       a.download = `${currentProject.name.replace(/[^a-zA-Z0-9\-_ ]/g, '')}.mid`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
       toastSuccess('MIDI file exported');
     } catch {
       toastError('Failed to export MIDI');
@@ -483,7 +508,29 @@ export function ProjectListDialog() {
   };
 
   const handleImportMidi = () => {
-    importMidiFile(currentProject, setProject, () => setShow(false));
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.mid,.midi';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      try {
+        if (currentProject) {
+          await saveProject(currentProject);
+        } else {
+          createProject({ name: file.name.replace(/\.(mid|midi)$/i, '') });
+        }
+
+        const trackIds = await importStoreMidiFile(file, { applyMetadata: true });
+        if (trackIds.length > 0) {
+          setShow(false);
+        }
+      } catch {
+        toastError('Failed to import MIDI file');
+      }
+    };
+    input.click();
   };
 
   const handleRestoreVersion = (project: Project) => {
@@ -577,7 +624,7 @@ export function ProjectListDialog() {
           ) : (
             <div className="space-y-1">
               {filteredProjects.map((p) => {
-                const meta = projectMetas.get(p.id);
+                const meta = projectMetas.get(p.id) ?? createDefaultProjectMeta(p.id);
                 return (
                   <div
                     key={p.id}
@@ -593,13 +640,11 @@ export function ProjectListDialog() {
                         <p className="text-[10px] text-zinc-400">
                           {p.trackCount} track{p.trackCount !== 1 ? 's' : ''} &middot; {formatDateTime(p.updatedAt)} &middot; {p.bpm} BPM
                         </p>
-                        {meta && (
-                          <ProjectMetaRow
-                            projectId={p.id}
-                            meta={meta}
-                            onUpdate={(m) => handleMetaUpdate(p.id, m)}
-                          />
-                        )}
+                        <ProjectMetaRow
+                          projectId={p.id}
+                          meta={meta}
+                          onUpdate={(m) => handleMetaUpdate(p.id, m)}
+                        />
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         {p.id === currentProject?.id ? (

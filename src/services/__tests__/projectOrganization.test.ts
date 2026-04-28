@@ -5,6 +5,7 @@ const mockSet = vi.fn();
 const mockDel = vi.fn();
 const mockKeys = vi.fn();
 vi.mock('idb-keyval', () => ({
+  createStore: vi.fn(() => ({})),
   get: (...args: unknown[]) => mockGet(...args),
   set: (...args: unknown[]) => mockSet(...args),
   del: (...args: unknown[]) => mockDel(...args),
@@ -14,6 +15,7 @@ vi.mock('idb-keyval', () => ({
 import {
   getProjectMeta,
   setProjectMeta,
+  deleteProjectMeta,
   listProjectMetas,
   toggleFavorite,
   setProjectFolder,
@@ -55,7 +57,12 @@ describe('projectOrganization', () => {
     it('stores and retrieves project meta', async () => {
       const meta = makeMeta({ folder: 'demos', tags: ['rock', 'draft'] });
       await setProjectMeta(meta);
-      expect(mockSet).toHaveBeenCalledWith('meta:proj-1', meta);
+      expect(mockSet).toHaveBeenCalledWith('meta:proj-1', meta, expect.anything());
+    });
+
+    it('deletes project meta', async () => {
+      await deleteProjectMeta('proj-1');
+      expect(mockDel).toHaveBeenCalledWith('meta:proj-1', expect.anything());
     });
   });
 
@@ -64,7 +71,7 @@ describe('projectOrganization', () => {
       mockGet.mockResolvedValue(makeMeta({ isFavorite: false }));
       const result = await toggleFavorite('proj-1');
       expect(result.isFavorite).toBe(true);
-      expect(mockSet).toHaveBeenCalledWith('meta:proj-1', expect.objectContaining({ isFavorite: true }));
+      expect(mockSet).toHaveBeenCalledWith('meta:proj-1', expect.objectContaining({ isFavorite: true }), expect.anything());
     });
 
     it('toggles favorite status off', async () => {
@@ -78,13 +85,13 @@ describe('projectOrganization', () => {
     it('assigns a folder to a project', async () => {
       mockGet.mockResolvedValue(makeMeta());
       await setProjectFolder('proj-1', 'demos');
-      expect(mockSet).toHaveBeenCalledWith('meta:proj-1', expect.objectContaining({ folder: 'demos' }));
+      expect(mockSet).toHaveBeenCalledWith('meta:proj-1', expect.objectContaining({ folder: 'demos' }), expect.anything());
     });
 
     it('clears folder with null', async () => {
       mockGet.mockResolvedValue(makeMeta({ folder: 'demos' }));
       await setProjectFolder('proj-1', null);
-      expect(mockSet).toHaveBeenCalledWith('meta:proj-1', expect.objectContaining({ folder: null }));
+      expect(mockSet).toHaveBeenCalledWith('meta:proj-1', expect.objectContaining({ folder: null }), expect.anything());
     });
   });
 

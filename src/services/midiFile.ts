@@ -48,14 +48,24 @@ function writeVLQ(value: number): number[] {
   return bytes;
 }
 
-function readVLQ(data: Uint8Array, offset: number): { value: number; length: number } {
+function ensureAvailable(pos: number, count: number, limit: number, message: string): void {
+  if (pos < 0 || count < 0 || pos + count > limit) {
+    throw new Error(message);
+  }
+}
+
+function readVLQ(data: Uint8Array, offset: number, limit = data.length): { value: number; length: number } {
   let value = 0;
   let length = 0;
   let byte: number;
   do {
+    ensureAvailable(offset + length, 1, limit, 'Malformed MIDI file: truncated variable-length quantity');
     byte = data[offset + length];
     value = (value << 7) | (byte & 0x7f);
     length++;
+    if (length > 4) {
+      throw new Error('Malformed MIDI file: variable-length quantity too long');
+    }
   } while (byte & 0x80);
   return { value, length };
 }
@@ -83,6 +93,13 @@ function bpmToMicrosecondsPerBeat(bpm: number): number {
   return Math.round(60_000_000 / bpm);
 }
 
+function normalizeTimeSignatureDenominator(value: number | undefined): number {
+  const denominator = value ?? 4;
+  return denominator > 0 && Number.isInteger(denominator) && (denominator & (denominator - 1)) === 0
+    ? denominator
+    : 4;
+}
+
 // ── Export ──
 
 function buildTempoTrack(project: Project): number[] {
@@ -94,7 +111,7 @@ function buildTempoTrack(project: Project): number[] {
 
   // Time signature meta event: FF 58 04 nn dd cc bb
   const ts = project.timeSignature || 4;
-  const tsDenom = project.timeSignatureDenominator || 4;
+  const tsDenom = normalizeTimeSignatureDenominator(project.timeSignatureDenominator);
   const denomPower = Math.round(Math.log2(tsDenom));
   events.push(...writeVLQ(0), 0xff, 0x58, 0x04, ts, denomPower, 24, 8);
 
@@ -197,6 +214,10 @@ export function exportProjectToMidi(project: Project): Uint8Array {
     }
   }
 
+  if (midiTracks.length > 16) {
+    throw new Error('MIDI export supports up to 16 MIDI tracks');
+  }
+
   const totalTrackCount = 1 + midiTracks.length; // tempo track + data tracks
 
   // Build header: MThd, length=6, format=1, nTracks, ticksPerBeat
@@ -236,7 +257,11 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
 
   const format = view.getUint16(8);
   const numTracks = view.getUint16(10);
-  const ticksPerBeat = view.getUint16(12);
+  const division = view.getUint16(12);
+  if ((division & 0x8000) !== 0) {
+    throw new Error('SMPTE time division not supported');
+  }
+  const ticksPerBeat = division;
 
   let bpm = 120; // default
   let tsNumerator = 4;
@@ -247,6 +272,7 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
 
   for (let t = 0; t < numTracks && offset < data.length; t++) {
     // Read track header
+    ensureAvailable(offset, 8, data.length, 'Invalid MIDI file: truncated track header');
     const chunkMagic = String.fromCharCode(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
     if (chunkMagic !== 'MTrk') {
       throw new Error(`Invalid MIDI track chunk at offset ${offset}`);
@@ -254,10 +280,11 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
     const trackLength = view.getUint32(offset + 4);
     const trackStart = offset + 8;
     const trackEnd = trackStart + trackLength;
+    ensureAvailable(trackStart, trackLength, data.length, 'Invalid MIDI file: track chunk exceeds file length');
 
     let trackName = '';
     const notes: MidiNoteEvent[] = [];
-    const activeNotes = new Map<number, { startTick: number; velocity: number; channel: number }>();
+    const activeNotes = new Map<number, { startTick: number; velocity: number; channel: number }[]>();
 
     let pos = trackStart;
     let tick = 0;
@@ -265,7 +292,7 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
 
     while (pos < trackEnd) {
       // Read delta time
-      const vlq = readVLQ(data, pos);
+      const vlq = readVLQ(data, pos, trackEnd);
       tick += vlq.value;
       pos += vlq.length;
 
@@ -276,10 +303,12 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
       // Meta event
       if (statusByte === 0xff) {
         pos++;
+        ensureAvailable(pos, 1, trackEnd, 'Malformed MIDI file: truncated meta event');
         const metaType = data[pos++];
-        const metaVLQ = readVLQ(data, pos);
+        const metaVLQ = readVLQ(data, pos, trackEnd);
         const metaLength = metaVLQ.value;
         pos += metaVLQ.length;
+        ensureAvailable(pos, metaLength, trackEnd, 'Malformed MIDI file: meta event exceeds track length');
 
         if (metaType === 0x03) {
           // Track name
@@ -300,7 +329,8 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
       // SysEx
       if (statusByte === 0xf0 || statusByte === 0xf7) {
         pos++;
-        const sysexVLQ = readVLQ(data, pos);
+        const sysexVLQ = readVLQ(data, pos, trackEnd);
+        ensureAvailable(pos + sysexVLQ.length, sysexVLQ.value, trackEnd, 'Malformed MIDI file: sysex event exceeds track length');
         pos += sysexVLQ.length + sysexVLQ.value;
         continue;
       }
@@ -310,6 +340,9 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
         runningStatus = statusByte;
         pos++;
       } else {
+        if (runningStatus < 0x80 || runningStatus >= 0xf0) {
+          throw new Error('Malformed MIDI track: running status used before status byte');
+        }
         statusByte = runningStatus;
       }
 
@@ -318,17 +351,25 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
 
       if (msgType === 0x90 || msgType === 0x80) {
         // Note on/off
+        ensureAvailable(pos, 2, trackEnd, 'Malformed MIDI file: truncated note event');
         const pitch = data[pos++] & 0x7f;
         const velocity = data[pos++] & 0x7f;
 
         if (msgType === 0x90 && velocity > 0) {
           // Note on
           const key = (channel << 8) | pitch;
-          activeNotes.set(key, { startTick: tick, velocity, channel });
+          const activeStack = activeNotes.get(key);
+          const noteState = { startTick: tick, velocity, channel };
+          if (activeStack) {
+            activeStack.push(noteState);
+          } else {
+            activeNotes.set(key, [noteState]);
+          }
         } else {
           // Note off
           const key = (channel << 8) | pitch;
-          const active = activeNotes.get(key);
+          const activeStack = activeNotes.get(key);
+          const active = activeStack?.shift();
           if (active) {
             const startBeat = active.startTick / ticksPerBeat;
             const durationBeats = (tick - active.startTick) / ticksPerBeat;
@@ -339,19 +380,23 @@ export function parseMidiFile(data: Uint8Array): MidiFileData {
               velocity: active.velocity,
               channel: active.channel,
             });
-            activeNotes.delete(key);
+            if (activeStack && activeStack.length === 0) {
+              activeNotes.delete(key);
+            }
           }
         }
       } else if (msgType === 0xc0 || msgType === 0xd0) {
         // Program change / channel pressure — 1 data byte
+        ensureAvailable(pos, 1, trackEnd, 'Malformed MIDI file: truncated channel event');
         pos++;
       } else {
         // Control change, pitch bend, etc — 2 data bytes
+        ensureAvailable(pos, 2, trackEnd, 'Malformed MIDI file: truncated channel event');
         pos += 2;
       }
     }
 
-    tracks.push({ name: trackName, channel: t > 0 ? t - 1 : 0, notes });
+    tracks.push({ name: trackName, channel: notes[0]?.channel ?? 0, notes });
     offset = trackEnd;
   }
 
