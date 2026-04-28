@@ -2,7 +2,11 @@ import { loadAudioBlobByKey, saveAudioBlob } from './audioFileManager';
 import { getAudioEngine } from '../hooks/useAudioEngine';
 import { audioBufferToWavBlob } from '../utils/wav';
 import { computeWaveformPeaks } from '../utils/waveformPeaks';
-import { CLIP_WAVEFORM_PEAK_COUNT } from '../utils/clipAudio';
+import {
+  CLIP_WAVEFORM_PEAK_COUNT,
+  getClipAudibleStartTime,
+  getClipSourceSpan,
+} from '../utils/clipAudio';
 import type { Clip } from '../types/project';
 
 /** -0.1 dBFS as linear amplitude: 10^(-0.1/20) ≈ 0.98855 */
@@ -11,6 +15,7 @@ const NORMALIZE_TARGET_PEAK = Math.pow(10, -0.1 / 20);
 export interface ClipProcessingResult {
   audioKey: string;
   waveformPeaks: number[];
+  audioDuration: number;
 }
 
 /** Minimal AudioBuffer-compatible shape for processing functions. */
@@ -41,6 +46,53 @@ function getClipAudioKey(clip: Clip): string | null {
   return clip.isolatedAudioKey ?? clip.cumulativeMixKey ?? null;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Extract the source window that is currently audible for a clip.
+ *
+ * Isolated audio is clip-relative and honors audioOffset/timeStretchRate.
+ * Cumulative audio is project-relative, matching the transport fallback path.
+ */
+export function extractClipAudioSegment(source: AudioBufferLike, clip: Clip): AudioBufferLike {
+  const sourceDuration = source.duration;
+  const isIsolatedSource = !!clip.isolatedAudioKey;
+  const clipWithSourceDuration = {
+    ...clip,
+    audioDuration: clip.audioDuration ?? sourceDuration,
+  };
+
+  const startSeconds = isIsolatedSource
+    ? clamp(clip.audioOffset ?? 0, 0, sourceDuration)
+    : clamp(
+        getClipAudibleStartTime(clipWithSourceDuration) + Math.max(0, clip.audioOffset ?? 0),
+        0,
+        sourceDuration,
+      );
+  const spanSeconds = getClipSourceSpan(clipWithSourceDuration);
+  const endSeconds = clamp(startSeconds + Math.max(0, spanSeconds), startSeconds, sourceDuration);
+
+  const startSample = clamp(Math.floor(startSeconds * source.sampleRate), 0, source.length);
+  const endSample = clamp(Math.ceil(endSeconds * source.sampleRate), startSample, source.length);
+  const length = endSample - startSample;
+  if (length <= 0) {
+    throw new Error(`Clip '${clip.id}' has no audible audio segment`);
+  }
+
+  if (startSample === 0 && endSample === source.length) {
+    return source;
+  }
+
+  const channels: Float32Array[] = [];
+  for (let ch = 0; ch < source.numberOfChannels; ch++) {
+    const srcData = source.getChannelData(ch);
+    channels.push(srcData.slice(startSample, endSample));
+  }
+  return createBuffer(channels, source.sampleRate);
+}
+
 async function loadClipAudioBuffer(clip: Clip): Promise<AudioBuffer> {
   const audioKey = getClipAudioKey(clip);
   if (!audioKey) {
@@ -62,7 +114,7 @@ async function saveProcessedBuffer(
   const wavBlob = audioBufferToWavBlob(buffer as AudioBuffer);
   const audioKey = await saveAudioBlob(projectId, clipId, 'isolated', wavBlob);
   const waveformPeaks = computeWaveformPeaks(buffer as AudioBuffer, CLIP_WAVEFORM_PEAK_COUNT);
-  return { audioKey, waveformPeaks };
+  return { audioKey, waveformPeaks, audioDuration: buffer.duration };
 }
 
 /**
@@ -145,7 +197,8 @@ export async function reverseClipAudio(
   clip: Clip,
 ): Promise<ClipProcessingResult> {
   const buffer = await loadClipAudioBuffer(clip);
-  const reversed = reverseAudioBuffer(buffer);
+  const segment = extractClipAudioSegment(buffer, clip);
+  const reversed = reverseAudioBuffer(segment);
   return saveProcessedBuffer(projectId, clip.id, reversed);
 }
 
@@ -158,7 +211,8 @@ export async function normalizeClipAudio(
   targetPeak: number = NORMALIZE_TARGET_PEAK,
 ): Promise<ClipProcessingResult> {
   const buffer = await loadClipAudioBuffer(clip);
-  const normalized = normalizeAudioBuffer(buffer, targetPeak);
+  const segment = extractClipAudioSegment(buffer, clip);
+  const normalized = normalizeAudioBuffer(segment, targetPeak);
   return saveProcessedBuffer(projectId, clip.id, normalized);
 }
 
@@ -172,6 +226,7 @@ export async function adjustClipGain(
 ): Promise<ClipProcessingResult> {
   const linearGain = Math.pow(10, gainDb / 20);
   const buffer = await loadClipAudioBuffer(clip);
-  const gained = applyGainToAudioBuffer(buffer, linearGain);
+  const segment = extractClipAudioSegment(buffer, clip);
+  const gained = applyGainToAudioBuffer(segment, linearGain);
   return saveProcessedBuffer(projectId, clip.id, gained);
 }

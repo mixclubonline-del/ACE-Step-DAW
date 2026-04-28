@@ -1,5 +1,6 @@
 import type { Project, ReverbParams, Track, TrackEffect, TrackEffectType, TrackName, TrackType } from '../types/project';
 import { useUIStore } from '../store/uiStore';
+import { canDestructivelyProcessClipAudio } from '../utils/clipAudio';
 
 export type CommandPaletteCommandKind = 'action' | 'setting' | 'parameter';
 
@@ -776,7 +777,7 @@ export function buildCommandPaletteCommands(context: CommandPaletteContext): Com
 
       const hasAudio = !!(selectedClip.clip.isolatedAudioKey || selectedClip.clip.cumulativeMixKey);
       const isMidi = !!selectedClip.clip.midiData;
-      if (hasAudio && !isMidi) {
+      if (hasAudio && !isMidi && canDestructivelyProcessClipAudio(selectedClip.clip)) {
         commands.push(
           createTrackCommand(
             'clip:reverse-selected',

@@ -3,7 +3,9 @@ import {
   reverseAudioBuffer,
   normalizeAudioBuffer,
   applyGainToAudioBuffer,
+  extractClipAudioSegment,
 } from '../clipAudioProcessing';
+import type { Clip } from '../../types/project';
 
 function createMockBuffer(
   channels: Float32Array[],
@@ -22,6 +24,86 @@ function createMockBuffer(
 }
 
 describe('clipAudioProcessing', () => {
+  describe('extractClipAudioSegment', () => {
+    it('extracts the currently audible source window from isolated audio', () => {
+      const source = createMockBuffer([new Float32Array([0.1, 0.2, 0.3, 0.4])], 1);
+      const clip = {
+        id: 'clip-1',
+        startTime: 0,
+        duration: 2,
+        audioDuration: 4,
+        audioOffset: 1,
+        isolatedAudioKey: 'isolated-key',
+        cumulativeMixKey: null,
+      } as Clip;
+
+      const result = extractClipAudioSegment(source, clip);
+
+      expect(result.duration).toBe(2);
+      expect(result.getChannelData(0)[0]).toBeCloseTo(0.2);
+      expect(result.getChannelData(0)[1]).toBeCloseTo(0.3);
+    });
+
+    it('extracts project-time windows for cumulative mix audio', () => {
+      const source = createMockBuffer([new Float32Array([0.1, 0.2, 0.3, 0.4])], 1);
+      const clip = {
+        id: 'clip-1',
+        startTime: 1,
+        duration: 2,
+        audioDuration: 4,
+        audioOffset: 0,
+        isolatedAudioKey: null,
+        cumulativeMixKey: 'cumulative-key',
+      } as Clip;
+
+      const result = extractClipAudioSegment(source, clip);
+
+      expect(result.duration).toBe(2);
+      expect(result.getChannelData(0)[0]).toBeCloseTo(0.2);
+      expect(result.getChannelData(0)[1]).toBeCloseTo(0.3);
+    });
+
+    it('includes source trim offset for cumulative mix audio', () => {
+      const source = createMockBuffer([new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5])], 1);
+      const clip = {
+        id: 'clip-1',
+        startTime: 1,
+        duration: 2,
+        audioDuration: 5,
+        audioOffset: 1,
+        isolatedAudioKey: null,
+        cumulativeMixKey: 'cumulative-key',
+      } as Clip;
+
+      const result = extractClipAudioSegment(source, clip);
+
+      expect(result.duration).toBe(2);
+      expect(result.getChannelData(0)[0]).toBeCloseTo(0.3);
+      expect(result.getChannelData(0)[1]).toBeCloseTo(0.4);
+    });
+
+    it('uses source span for repitched cumulative mix audio', () => {
+      const source = createMockBuffer([new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5])], 1);
+      const clip = {
+        id: 'clip-1',
+        startTime: 1,
+        duration: 4,
+        audioDuration: 5,
+        audioOffset: 0,
+        timeStretchRate: 0.5,
+        stretchMode: 'repitch',
+        isolatedAudioKey: null,
+        cumulativeMixKey: 'cumulative-key',
+      } as Clip;
+
+      const result = extractClipAudioSegment(source, clip);
+
+      expect(result.duration).toBe(2);
+      expect(result.getChannelData(0)[0]).toBeCloseTo(0.2);
+      expect(result.getChannelData(0)[1]).toBeCloseTo(0.3);
+    });
+  });
+
   describe('reverseAudioBuffer', () => {
     it('reverses a mono audio buffer', () => {
       const source = createMockBuffer([new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5])]);
