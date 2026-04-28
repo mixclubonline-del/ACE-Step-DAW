@@ -115,20 +115,23 @@ describe('VoiceInfluenceControls', () => {
     expect(useVoiceStore.getState().voices[0].defaultStyleInfluence).toBe(30);
   });
 
-  it('resets both sliders to defaults on double-click', () => {
+  it('resets both sliders to the selected voice defaults on double-click', () => {
     setSelectedVoice(makeVoiceProfile({
       id: 'v1',
-      defaultAudioInfluence: 90,
-      defaultStyleInfluence: 10,
+      defaultAudioInfluence: 35,
+      defaultStyleInfluence: 65,
     }));
 
     render(<VoiceInfluenceControls />);
 
+    fireEvent.change(screen.getByLabelText('Audio Influence'), { target: { value: '90' } });
+    fireEvent.change(screen.getByLabelText('Style Influence'), { target: { value: '10' } });
+
     fireEvent.doubleClick(screen.getByLabelText('Audio Influence'));
-    expect(useVoiceStore.getState().voices[0].defaultAudioInfluence).toBe(DEFAULT_AUDIO_INFLUENCE);
+    expect(useVoiceStore.getState().voices[0].defaultAudioInfluence).toBe(35);
 
     fireEvent.doubleClick(screen.getByLabelText('Style Influence'));
-    expect(useVoiceStore.getState().voices[0].defaultStyleInfluence).toBe(DEFAULT_STYLE_INFLUENCE);
+    expect(useVoiceStore.getState().voices[0].defaultStyleInfluence).toBe(65);
   });
 
   it('highlights the active preset', () => {

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { useVoiceStore } from '../../store/voiceStore';
 import {
@@ -17,12 +17,29 @@ export function VoiceInfluenceControls() {
   const selectedVoiceId = useVoiceStore((s) => s.selectedVoiceId);
   const voices = useVoiceStore((s) => s.voices);
   const updateVoice = useVoiceStore((s) => s.updateVoice);
+  const selectedDefaultsRef = useRef({
+    id: null as string | null,
+    audioInfluence: DEFAULT_AUDIO_INFLUENCE,
+    styleInfluence: DEFAULT_STYLE_INFLUENCE,
+  });
 
   const selectedProfile = selectedVoiceId
     ? voices.find((p) => p.id === selectedVoiceId)
     : null;
   const audioInfluence = selectedProfile?.defaultAudioInfluence ?? DEFAULT_AUDIO_INFLUENCE;
   const styleInfluence = selectedProfile?.defaultStyleInfluence ?? DEFAULT_STYLE_INFLUENCE;
+
+  useEffect(() => {
+    if (!selectedProfile || selectedDefaultsRef.current.id === selectedProfile.id) {
+      return;
+    }
+
+    selectedDefaultsRef.current = {
+      id: selectedProfile.id,
+      audioInfluence: clampInfluence(selectedProfile.defaultAudioInfluence ?? DEFAULT_AUDIO_INFLUENCE),
+      styleInfluence: clampInfluence(selectedProfile.defaultStyleInfluence ?? DEFAULT_STYLE_INFLUENCE),
+    };
+  }, [selectedProfile]);
 
   const updateInfluence = useCallback(
     (updates: { defaultAudioInfluence?: number; defaultStyleInfluence?: number }) => {
@@ -47,12 +64,12 @@ export function VoiceInfluenceControls() {
   );
 
   const handleAudioDoubleClick = useCallback(
-    () => updateInfluence({ defaultAudioInfluence: DEFAULT_AUDIO_INFLUENCE }),
+    () => updateInfluence({ defaultAudioInfluence: selectedDefaultsRef.current.audioInfluence }),
     [updateInfluence],
   );
 
   const handleStyleDoubleClick = useCallback(
-    () => updateInfluence({ defaultStyleInfluence: DEFAULT_STYLE_INFLUENCE }),
+    () => updateInfluence({ defaultStyleInfluence: selectedDefaultsRef.current.styleInfluence }),
     [updateInfluence],
   );
 
