@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import type { MouseEvent } from 'react';
 import type { VoiceProfile } from '../../types/voice';
 import { renderSimplePeaks } from '../generation/WaveformPreview';
 
@@ -37,7 +38,7 @@ export function VoiceCard({
   onDelete,
 }: VoiceCardProps) {
   const handlePlayToggle = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       e.stopPropagation();
       if (isPlaying) {
         onStop();
@@ -49,7 +50,7 @@ export function VoiceCard({
   );
 
   const handleEdit = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       e.stopPropagation();
       onEdit(voice.id);
     },
@@ -57,7 +58,7 @@ export function VoiceCard({
   );
 
   const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       e.stopPropagation();
       onDelete(voice.id);
     },

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import { useVoiceStore } from '../../store/voiceStore';
 import { VoiceCard } from './VoiceCard';
 import { VoiceEditDialog } from './VoiceEditDialog';
@@ -57,7 +58,7 @@ export function VoiceLibraryPanel() {
   }, []);
 
   const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
