@@ -3128,6 +3128,24 @@ export async function generateText2Music(request: Text2MusicRequest): Promise<Te
       params.negative_prompt = request.negativePrompt.trim();
     }
 
+    // Voice cloning: load selected voice blob from IDB and upload alongside generation request.
+    let referenceVoiceBlob: Blob | undefined;
+    const selectedVoiceId = useVoiceStore.getState().selectedVoiceId;
+    if (selectedVoiceId) {
+      const voiceProfile = useVoiceStore.getState().getVoiceById(selectedVoiceId);
+      if (voiceProfile) {
+        throwIfAborted(abortController.signal);
+        const blob = await loadAudioBlobByKey(voiceProfile.audioKey);
+        throwIfAborted(abortController.signal);
+        if (blob) {
+          referenceVoiceBlob = blob;
+          params.reference_voice_path = 'uploaded';
+          params.audio_influence = voiceProfile.defaultAudioInfluence;
+          params.style_influence = voiceProfile.defaultStyleInfluence;
+        }
+      }
+    }
+
     // Submit — text2music doesn't need source audio, send silence as placeholder
     const jobStartedAt = Date.now();
     genStore.updateJob(jobId, {
@@ -3139,7 +3157,10 @@ export async function generateText2Music(request: Text2MusicRequest): Promise<Te
     store.updateClipStatus(clipId, 'generating');
 
     const silenceBlob = generateSilenceWav(request.durationSeconds);
-    const releaseResp = await api.releaseLegoTask(silenceBlob, params, { signal: abortController.signal });
+    const releaseResp = await api.releaseLegoTask(silenceBlob, params, {
+      signal: abortController.signal,
+      referenceVoiceBlob,
+    });
     const taskId = releaseResp.task_id;
     genStore.updateJob(jobId, { taskId });
 
