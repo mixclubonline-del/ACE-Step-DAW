@@ -1922,6 +1922,8 @@ export interface GenerateCoverOptions {
   createNew: boolean;
   /** Optional IDB audio key to use as source instead of the clip's own audio (for iterative chaining) */
   sourceAudioOverride?: string;
+  /** Elements to exclude from generation */
+  negativePrompt?: string;
 }
 
 export async function generateCoverClip(opts: GenerateCoverOptions): Promise<string | undefined> {
@@ -1929,7 +1931,7 @@ export async function generateCoverClip(opts: GenerateCoverOptions): Promise<str
   if (!genStore.tryAcquireGenerationLock()) return undefined;
   let resolvedTargetClipId: string | undefined;
   await withGenerationToast('AI generation', async () => {
-    const { clipId, caption, lyrics, coverStrength, createNew, sourceAudioOverride } = opts;
+    const { clipId, caption, lyrics, coverStrength, createNew, sourceAudioOverride, negativePrompt } = opts;
     const store = useProjectStore.getState();
 
     const sourceClip = store.getClipById(clipId);
@@ -2002,6 +2004,9 @@ export async function generateCoverClip(opts: GenerateCoverOptions): Promise<str
         thinking: project.generationDefaults.thinking,
         model: project.generationDefaults.model,
       };
+      if (negativePrompt?.trim()) {
+        coverParams.negative_prompt = negativePrompt.trim();
+      }
 
       const coverStartedAt = Date.now();
       genStore.updateJob(jobId, { status: 'generating', progress: 'Submitting...', startedAt: coverStartedAt });
@@ -2104,6 +2109,7 @@ async function generateRepaintInternal(
   globalCaption: string,
   repaintMode: RepaintMode = 'balanced',
   repaintStrength: number = 0.5,
+  negativePrompt?: string,
 ): Promise<GenerationOutcome> {
   const store = useProjectStore.getState();
   const genStore = useGenerationStore.getState();
@@ -2153,6 +2159,9 @@ async function generateRepaintInternal(
       repaint_mode: repaintMode,
       repaint_strength: repaintStrength,
     };
+    if (negativePrompt?.trim()) {
+      params.negative_prompt = negativePrompt.trim();
+    }
 
     const jobStartedAt = Date.now();
     {
@@ -2340,6 +2349,8 @@ export interface GenerateRepaintOptions {
   repaintStrength?: number;
   /** Optional IDB audio key to use as source instead of the clip's own audio (for iterative chaining) */
   sourceAudioOverride?: string;
+  /** Elements to exclude from generation */
+  negativePrompt?: string;
 }
 
 export async function generateRepaintClip(opts: GenerateRepaintOptions): Promise<string | undefined> {
@@ -2382,6 +2393,7 @@ export async function generateRepaintClip(opts: GenerateRepaintOptions): Promise
         globalCaption,
         opts.repaintMode ?? 'balanced',
         opts.repaintStrength ?? 0.5,
+        opts.negativePrompt,
       );
 
       if (outcome.succeeded) {
@@ -2413,6 +2425,8 @@ export interface RegionRegenerateOptions {
   globalCaption?: string;
   repaintMode?: RepaintMode;
   repaintStrength?: number;
+  /** Elements to exclude from generation */
+  negativePrompt?: string;
 }
 
 /**
@@ -2479,6 +2493,7 @@ export async function regenerateTimelineRegion(opts: RegionRegenerateOptions): P
           globalCaption,
           opts.repaintMode ?? 'balanced',
           opts.repaintStrength ?? 0.5,
+          opts.negativePrompt,
         );
 
         allSucceeded = allSucceeded && outcome.succeeded;

@@ -205,6 +205,74 @@ describe('generateRepaintClip return value', () => {
   });
 });
 
+describe('negative prompt pipeline forwarding', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useProjectStore.setState(useProjectStore.getInitialState(), true);
+    useGenerationStore.setState(useGenerationStore.getInitialState(), true);
+    useProjectStore.getState().createProject();
+    mockLoadAudioBlobByKey.mockResolvedValue(new Blob(['audio'], { type: 'audio/wav' }));
+    mockReleaseLegoTask.mockRejectedValue(new Error('stop after params'));
+  });
+
+  it('passes negative_prompt to cover generation params', async () => {
+    const track = useProjectStore.getState().addTrack('stems');
+    const clip = useProjectStore.getState().addClip(track.id, {
+      name: 'Cover Source',
+      startTime: 0,
+      duration: 5,
+      type: 'audio',
+    });
+    useProjectStore.getState().updateClip(clip.id, {
+      isolatedAudioKey: 'source-audio',
+      generationStatus: 'ready',
+    });
+
+    await generateCoverClip({
+      clipId: clip.id,
+      caption: 'jazz cover',
+      lyrics: '',
+      coverStrength: 0.5,
+      createNew: false,
+      negativePrompt: ' no distortion ',
+    });
+
+    expect(mockReleaseLegoTask).toHaveBeenCalled();
+    expect(mockReleaseLegoTask.mock.calls[0][1]).toMatchObject({
+      task_type: 'cover',
+      negative_prompt: 'no distortion',
+    });
+  });
+
+  it('passes negative_prompt to repaint generation params', async () => {
+    const track = useProjectStore.getState().addTrack('stems');
+    const clip = useProjectStore.getState().addClip(track.id, {
+      name: 'Repaint Source',
+      startTime: 0,
+      duration: 5,
+      type: 'audio',
+    });
+    useProjectStore.getState().updateClip(clip.id, {
+      cumulativeMixKey: 'source-audio',
+      generationStatus: 'ready',
+    });
+
+    await generateRepaintClip({
+      clipId: clip.id,
+      repaintStart: 0,
+      repaintEnd: 5,
+      prompt: 'gentle piano',
+      negativePrompt: ' no harsh vocals ',
+    });
+
+    expect(mockReleaseLegoTask).toHaveBeenCalled();
+    expect(mockReleaseLegoTask.mock.calls[0][1]).toMatchObject({
+      task_type: 'repaint',
+      negative_prompt: 'no harsh vocals',
+    });
+  });
+});
+
 describe('sourceAudioOverride fallback warning', () => {
   beforeEach(() => {
     vi.clearAllMocks();

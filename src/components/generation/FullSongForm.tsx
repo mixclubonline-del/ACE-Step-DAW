@@ -219,6 +219,7 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
       if (p.splitToStems !== undefined) setSplitToStems(p.splitToStems);
       if (p.stemCount !== undefined) setStemCount(p.stemCount);
       if (p.useProjectMeta !== undefined) setUseProjectMeta(p.useProjectMeta);
+      setNegativePrompt(p.negativePrompt ?? '');
       const persistedTemperature = (p as { temperature?: unknown }).temperature;
       const persistedGuidanceScale = p.guidanceScale;
       if (
@@ -276,6 +277,7 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
       setInstrumental(editingClip.lyrics === '[Instrumental]');
       setTemperature(DEFAULT_GENERATION_TEMPERATURE);
       setLegacyGuidanceScale(null);
+      setNegativePrompt('');
       useGenerationStore.getState().setGenerationStyleTags([]);
     }
   }, [editingClipId, editingClip]);
@@ -361,6 +363,7 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
           guidanceScale: effectiveGuidanceScale,
           temperature: legacyGuidanceScale === null ? temperature : undefined,
           shift: project?.generationDefaults?.shift,
+          negativePrompt: negativePrompt.trim() || undefined,
           styleTags: styleTags.length > 0 ? [...styleTags] : undefined,
           voiceProfileId,
           audioInfluence,
@@ -401,7 +404,7 @@ export function FullSongForm({ initialData, onFooterChange }: FullSongFormProps)
     }).catch((err) => {
       setError(err instanceof Error ? err.message : 'Generation failed');
     });
-  }, [prompt, lyrics, instrumental, durationSeconds, project, splitToStems, stemCount, thinking, seed, useRandomSeed, useProjectMeta, syncMetaToProject, vocalLanguage, editingClipId, styleTags, temperature, legacyGuidanceScale]);
+  }, [prompt, lyrics, instrumental, durationSeconds, project, splitToStems, stemCount, thinking, seed, useRandomSeed, useProjectMeta, syncMetaToProject, vocalLanguage, editingClipId, negativePrompt, styleTags, temperature, legacyGuidanceScale]);
 
   // Sync footer state to parent on every render
   const footerAction = useCallback(() => void handleGenerate(), [handleGenerate]);
