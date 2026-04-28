@@ -340,9 +340,14 @@ export async function getStats(): Promise<StatsResponse> {
 const RELEASE_TASK_TIMEOUT_MS = 3 * 60 * 1000;
 const RELEASE_TASK_MAX_RETRIES = 3;
 
+interface ApiRequestOptions {
+  signal?: AbortSignal;
+}
+
 async function releaseTask(
   srcAudioBlob: Blob,
   params: AceStepTaskParams,
+  options?: ApiRequestOptions,
 ): Promise<ReleaseTaskResponse> {
   const base = getApiBase();
 
@@ -373,9 +378,15 @@ async function releaseTask(
     }
 
     const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    options?.signal?.addEventListener('abort', onAbort, { once: true });
     const timer = setTimeout(() => controller.abort(), RELEASE_TASK_TIMEOUT_MS);
 
     try {
+      if (options?.signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
       if (attempt > 1) {
         logger.warn(`releaseLegoTask retry ${attempt}/${RELEASE_TASK_MAX_RETRIES}`);
       }
@@ -395,6 +406,10 @@ async function releaseTask(
       return envelope.data;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
+      if (options?.signal?.aborted) {
+        throw lastError;
+      }
+
       const isRetryable =
         lastError.name === 'AbortError' ||
         lastError.name === 'TypeError' ||
@@ -409,6 +424,7 @@ async function releaseTask(
       await new Promise((r) => setTimeout(r, delay));
     } finally {
       clearTimeout(timer);
+      options?.signal?.removeEventListener('abort', onAbort);
     }
   }
 
@@ -418,23 +434,26 @@ async function releaseTask(
 export async function releaseLegoTask(
   srcAudioBlob: Blob,
   params: LegoTaskParams | Text2MusicTaskParams | CoverTaskParams | RepaintTaskParams,
+  options?: ApiRequestOptions,
 ): Promise<ReleaseTaskResponse> {
-  return releaseTask(srcAudioBlob, params);
+  return releaseTask(srcAudioBlob, params, options);
 }
 
 export async function releaseStemSeparationTask(
   srcAudioBlob: Blob,
   params: StemSeparationTaskParams,
+  options?: ApiRequestOptions,
 ): Promise<ReleaseTaskResponse> {
-  return releaseTask(srcAudioBlob, params);
+  return releaseTask(srcAudioBlob, params, options);
 }
 
-export async function queryResult(taskIds: string[]): Promise<TaskResultEntry[]> {
+export async function queryResult(taskIds: string[], options?: ApiRequestOptions): Promise<TaskResultEntry[]> {
   const base = getApiBase();
   const res = await fetch(`${base}/query_result`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ task_id_list: taskIds }),
+    signal: options?.signal,
   });
 
   if (!res.ok) throw new Error(`queryResult failed: ${res.status}`);
@@ -445,7 +464,7 @@ export async function queryResult(taskIds: string[]): Promise<TaskResultEntry[]>
 const DOWNLOAD_AUDIO_TIMEOUT_MS = 3 * 60 * 1000;
 const DOWNLOAD_AUDIO_MAX_RETRIES = 3;
 
-export async function downloadAudio(audioPath: string): Promise<Blob> {
+export async function downloadAudio(audioPath: string, options?: ApiRequestOptions): Promise<Blob> {
   const base = getApiBase();
   let url: string;
   if (audioPath.startsWith('/v1/')) {
@@ -458,9 +477,15 @@ export async function downloadAudio(audioPath: string): Promise<Blob> {
 
   for (let attempt = 1; attempt <= DOWNLOAD_AUDIO_MAX_RETRIES; attempt++) {
     const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    options?.signal?.addEventListener('abort', onAbort, { once: true });
     const timer = setTimeout(() => controller.abort(), DOWNLOAD_AUDIO_TIMEOUT_MS);
 
     try {
+      if (options?.signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
       if (attempt > 1) {
         logger.warn(`downloadAudio retry ${attempt}/${DOWNLOAD_AUDIO_MAX_RETRIES}`);
       }
@@ -469,6 +494,10 @@ export async function downloadAudio(audioPath: string): Promise<Blob> {
       return await res.blob();
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
+      if (options?.signal?.aborted) {
+        throw lastError;
+      }
+
       logger.error(`downloadAudio attempt ${attempt} failed:`, lastError.message);
 
       const isRetryable =
@@ -482,6 +511,7 @@ export async function downloadAudio(audioPath: string): Promise<Blob> {
       await new Promise((r) => setTimeout(r, delay));
     } finally {
       clearTimeout(timer);
+      options?.signal?.removeEventListener('abort', onAbort);
     }
   }
 
