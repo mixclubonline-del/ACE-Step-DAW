@@ -5,20 +5,19 @@ import type { GenerationPreset } from '../constants/generationPresets';
 import { useProjectStore } from './projectStore';
 import { classifyGenerationError, type GenerationErrorCategory } from '../services/generationErrorClassifier';
 import { loadAudioBlobByKey } from '../services/audioFileManager';
+import { abortJob as abortPipelineJob } from '../services/generationAbortRegistry';
 import {
   applyPromptAutocompleteSuggestion as applyPromptAutocompleteSuggestionToPrompt,
   getPromptAutocompleteSuggestions as getPromptAutocompleteSuggestionsForPrompt,
   type AppliedPromptAutocompleteSuggestion,
   type PromptAutocompleteSuggestion,
 } from '../utils/promptAutocomplete';
-import type { VoiceProfile } from '../types/voice';
-import { clampInfluence, DEFAULT_AUDIO_INFLUENCE, DEFAULT_STYLE_INFLUENCE } from '../types/voice';
 
 export interface GenerationJob {
   id: string;
   clipId: string;
   trackName: string;
-  status: 'queued' | 'generating' | 'processing' | 'done' | 'error';
+  status: 'queued' | 'generating' | 'processing' | 'done' | 'error' | 'cancelled';
   progress: string;
   stage?: string | null;
   progressPercent?: number | null;
@@ -31,6 +30,8 @@ export interface GenerationJob {
   errorCategory?: GenerationErrorCategory;
   error?: string;
   taskId?: string;
+  /** Stored generation parameters for retry. */
+  retryParams?: Record<string, unknown>;
 }
 
 export interface GenerationJobProgressInput {
@@ -68,6 +69,8 @@ function inferStageLabel(status: GenerationJob['status'], progress: string): str
       return 'Complete';
     case 'error':
       return 'Generation failed';
+    case 'cancelled':
+      return 'Cancelled';
     default:
       return null;
   }
@@ -134,15 +137,20 @@ export function deriveGenerationJobProgress(
     etaConfidence = 'none';
   }
 
+  if (input.status === 'cancelled') {
+    etaSeconds = null;
+    etaConfidence = 'none';
+  }
+
   return {
     progress: input.progress,
     stage,
-    progressPercent: input.status === 'done' ? 100 : monotonicPercent,
+    progressPercent: input.status === 'cancelled' ? null : (input.status === 'done' ? 100 : monotonicPercent),
     etaSeconds,
     etaConfidence,
     startedAt,
     lastUpdatedAt: now,
-    completedAt: input.status === 'done' ? now : previous?.completedAt,
+    completedAt: input.status === 'done' || input.status === 'cancelled' ? now : previous?.completedAt,
     ...buildClassifiedError(input.status, input.error),
     error: input.error,
   };
@@ -275,6 +283,7 @@ const MAX_STYLE_TAGS = 6;
 
 export interface GenerationFormState {
   prompt: string;
+  negativePrompt: string;
   styleTags: string[];
   bpm: number;
   keyScale: string;
@@ -293,12 +302,6 @@ export interface GenerationFormState {
   useRandomSeed: boolean;
   compareModelsEnabled: boolean;
   compareModelOverrides: ModelOverride[];
-  /** Selected voice profile ID for voice-conditioned generation (null = no voice). */
-  selectedVoiceProfileId: string | null;
-  /** Audio Influence (0–100): how much of the reference voice character is preserved. */
-  audioInfluence: number;
-  /** Style Influence (0–100): how much the AI's trained style is applied. */
-  styleInfluence: number;
 }
 
 export interface GenerationValidationInput {
@@ -383,6 +386,7 @@ function normalizeVariationSessionParams(
 export function createDefaultGenerationFormState(): GenerationFormState {
   return {
     prompt: '',
+    negativePrompt: '',
     styleTags: [],
     bpm: DEFAULT_BPM,
     keyScale: DEFAULT_KEY_SCALE,
@@ -401,9 +405,6 @@ export function createDefaultGenerationFormState(): GenerationFormState {
     useRandomSeed: true,
     compareModelsEnabled: false,
     compareModelOverrides: [],
-    selectedVoiceProfileId: null,
-    audioInfluence: DEFAULT_AUDIO_INFLUENCE,
-    styleInfluence: DEFAULT_STYLE_INFLUENCE,
   };
 }
 
@@ -462,12 +463,15 @@ export interface GenerationState {
   generationForm: GenerationFormState;
   lastSubmittedRequest: SubmittedGenerationRequest | null;
   stemsFormDraft: StemsFormDraft | null;
-  voiceProfiles: VoiceProfile[];
 
   addJob: (job: GenerationJob) => void;
   updateJob: (jobId: string, updates: Partial<GenerationJob>) => void;
   removeJob: (jobId: string) => void;
   clearCompletedJobs: () => void;
+  /** Cancel an active or queued generation job. */
+  cancelJob: (jobId: string) => void;
+  /** Cancel all active and queued generation jobs. */
+  cancelAllJobs: () => void;
   setIsGenerating: (v: boolean) => void;
   /** Atomically acquire the generation lock. Returns true if acquired, false if already held. */
   tryAcquireGenerationLock: () => boolean;
@@ -481,6 +485,7 @@ export interface GenerationState {
   hydrateGenerationForm: (updates: Partial<GenerationFormState>) => void;
   resetGenerationForm: () => void;
   setGenerationPrompt: (prompt: string) => void;
+  setGenerationNegativePrompt: (negativePrompt: string) => void;
   setGenerationStyleTags: (tags: string[]) => void;
   toggleGenerationStyleTag: (tag: string) => void;
   setGenerationBpm: (bpm: number) => void;
@@ -509,14 +514,6 @@ export interface GenerationState {
 
   setCompareModelsEnabled: (enabled: boolean) => void;
   setCompareModelOverrides: (overrides: ModelOverride[]) => void;
-
-  addVoiceProfile: (profile: VoiceProfile) => void;
-  removeVoiceProfile: (profileId: string) => void;
-  updateVoiceProfile: (profileId: string, updates: Partial<Omit<VoiceProfile, 'id'>>) => void;
-  setSelectedVoiceProfile: (profileId: string | null) => void;
-  setAudioInfluence: (value: number) => void;
-  setStyleInfluence: (value: number) => void;
-  applyVoiceInfluencePreset: (audioInfluence: number, styleInfluence: number) => void;
 
   startVariationSession: (params: VariationSessionParams) => void;
   updateVariation: (index: number, updates: Partial<Omit<Variation, 'index'>>) => void;
@@ -571,7 +568,6 @@ export const useGenerationStore = create<GenerationState>()(
       generationForm: createDefaultGenerationFormState(),
       lastSubmittedRequest: null,
       stemsFormDraft: null,
-      voiceProfiles: [],
 
       addJob: (job) => set((s) => ({
         jobs: [
@@ -624,8 +620,46 @@ export const useGenerationStore = create<GenerationState>()(
 
       clearCompletedJobs: () =>
         set((s) => ({
-          jobs: s.jobs.filter((j) => j.status !== 'done' && j.status !== 'error'),
+          jobs: s.jobs.filter((j) => j.status !== 'done' && j.status !== 'error' && j.status !== 'cancelled'),
         })),
+
+      cancelJob: (jobId) => {
+        const s = get();
+        const job = s.jobs.find((j) => j.id === jobId);
+        if (!job || job.status === 'done' || job.status === 'error' || job.status === 'cancelled') return;
+
+        // Only mark cancelled when an underlying controller was actually aborted.
+        if (!abortPipelineJob(jobId)) return;
+
+        set((state) => ({
+          jobs: state.jobs.map((j) =>
+            j.id === jobId
+              ? { ...j, status: 'cancelled' as const, progress: 'Cancelled', stage: 'Cancelled', progressPercent: null, etaSeconds: null, etaConfidence: 'none' as const, completedAt: Date.now(), lastUpdatedAt: Date.now() }
+              : j,
+          ),
+        }));
+      },
+
+      cancelAllJobs: () => {
+        const s = get();
+        // Abort all in-flight API requests that have registered controllers.
+        const abortedJobIds = new Set<string>();
+        for (const job of s.jobs) {
+          if (job.status === 'queued' || job.status === 'generating' || job.status === 'processing') {
+            if (abortPipelineJob(job.id)) abortedJobIds.add(job.id);
+          }
+        }
+
+        if (abortedJobIds.size === 0) return;
+
+        set((state) => ({
+          jobs: state.jobs.map((j) =>
+            abortedJobIds.has(j.id)
+              ? { ...j, status: 'cancelled' as const, progress: 'Cancelled', stage: 'Cancelled', progressPercent: null, etaSeconds: null, etaConfidence: 'none' as const, completedAt: Date.now(), lastUpdatedAt: Date.now() }
+              : j,
+          ),
+        }));
+      },
 
       setIsGenerating: (v) => set({ isGenerating: v }),
       tryAcquireGenerationLock: () => {
@@ -783,6 +817,14 @@ export const useGenerationStore = create<GenerationState>()(
         },
       })),
 
+      setGenerationNegativePrompt: (negativePrompt) => set((s) => ({
+        generationForm: {
+          ...s.generationForm,
+          negativePrompt,
+          requestError: null,
+        },
+      })),
+
       setGenerationStyleTags: (tags) => set((s) => ({
         generationForm: {
           ...s.generationForm,
@@ -891,58 +933,6 @@ export const useGenerationStore = create<GenerationState>()(
 
       setCompareModelOverrides: (overrides) => set((s) => ({
         generationForm: { ...s.generationForm, compareModelOverrides: overrides, requestError: null },
-      })),
-
-      addVoiceProfile: (profile) => set((s) => ({
-        voiceProfiles: [...s.voiceProfiles, profile],
-      })),
-
-      removeVoiceProfile: (profileId) => set((s) => ({
-        voiceProfiles: s.voiceProfiles.filter((p) => p.id !== profileId),
-        generationForm: s.generationForm.selectedVoiceProfileId === profileId
-          ? {
-              ...s.generationForm,
-              selectedVoiceProfileId: null,
-              audioInfluence: DEFAULT_AUDIO_INFLUENCE,
-              styleInfluence: DEFAULT_STYLE_INFLUENCE,
-            }
-          : s.generationForm,
-      })),
-
-      updateVoiceProfile: (profileId, updates) => set((s) => ({
-        voiceProfiles: s.voiceProfiles.map((p) =>
-          p.id === profileId ? { ...p, ...updates, updatedAt: Date.now() } : p,
-        ),
-      })),
-
-      setSelectedVoiceProfile: (profileId) => set((s) => {
-        const profile = profileId ? s.voiceProfiles.find((p) => p.id === profileId) : null;
-        return {
-          generationForm: {
-            ...s.generationForm,
-            selectedVoiceProfileId: profileId,
-            audioInfluence: clampInfluence(profile?.defaultAudioInfluence ?? DEFAULT_AUDIO_INFLUENCE),
-            styleInfluence: clampInfluence(profile?.defaultStyleInfluence ?? DEFAULT_STYLE_INFLUENCE),
-            requestError: null,
-          },
-        };
-      }),
-
-      setAudioInfluence: (value) => set((s) => ({
-        generationForm: { ...s.generationForm, audioInfluence: clampInfluence(value), requestError: null },
-      })),
-
-      setStyleInfluence: (value) => set((s) => ({
-        generationForm: { ...s.generationForm, styleInfluence: clampInfluence(value), requestError: null },
-      })),
-
-      applyVoiceInfluencePreset: (audioInfluence, styleInfluence) => set((s) => ({
-        generationForm: {
-          ...s.generationForm,
-          audioInfluence: clampInfluence(audioInfluence),
-          styleInfluence: clampInfluence(styleInfluence),
-          requestError: null,
-        },
       })),
 
       setGenerationRequestError: (message) => set((s) => ({
@@ -1152,6 +1142,7 @@ export const useGenerationStore = create<GenerationState>()(
 
         for (const variation of s.variationSession.variations) {
           if (!variation.clipId) continue;
+          if (!projState.getClipById(variation.clipId)) continue;
           const shouldMute = variation.index !== clamped;
           projState.updateClip(variation.clipId, { muted: shouldMute });
         }

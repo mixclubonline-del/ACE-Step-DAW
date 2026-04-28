@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
-import { useGenerationStore } from '../../store/generationStore';
+import { useVoiceStore } from '../../store/voiceStore';
 import {
   DEFAULT_AUDIO_INFLUENCE,
   DEFAULT_STYLE_INFLUENCE,
   VOICE_INFLUENCE_PRESETS,
+  clampInfluence,
 } from '../../types/voice';
 
 /**
@@ -12,40 +13,50 @@ import {
  * Follows DAW interaction patterns: double-click to reset and real-time percentage feedback.
  */
 export function VoiceInfluenceControls() {
-  const selectedVoiceProfileId = useGenerationStore((s) => s.generationForm.selectedVoiceProfileId);
-  const audioInfluence = useGenerationStore((s) => s.generationForm.audioInfluence);
-  const styleInfluence = useGenerationStore((s) => s.generationForm.styleInfluence);
-  const voiceProfiles = useGenerationStore((s) => s.voiceProfiles);
-  const setAudioInfluence = useGenerationStore((s) => s.setAudioInfluence);
-  const setStyleInfluence = useGenerationStore((s) => s.setStyleInfluence);
-  const applyPreset = useGenerationStore((s) => s.applyVoiceInfluencePreset);
+  const selectedVoiceId = useVoiceStore((s) => s.selectedVoiceId);
+  const voices = useVoiceStore((s) => s.voices);
+  const updateVoice = useVoiceStore((s) => s.updateVoice);
 
-  const selectedProfile = selectedVoiceProfileId
-    ? voiceProfiles.find((p) => p.id === selectedVoiceProfileId)
+  const selectedProfile = selectedVoiceId
+    ? voices.find((p) => p.id === selectedVoiceId)
     : null;
+  const audioInfluence = selectedProfile?.defaultAudioInfluence ?? DEFAULT_AUDIO_INFLUENCE;
+  const styleInfluence = selectedProfile?.defaultStyleInfluence ?? DEFAULT_STYLE_INFLUENCE;
+
+  const updateInfluence = useCallback(
+    (updates: { defaultAudioInfluence?: number; defaultStyleInfluence?: number }) => {
+      if (!selectedProfile) return;
+      updateVoice(selectedProfile.id, updates);
+    },
+    [selectedProfile, updateVoice],
+  );
 
   const handleAudioChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => setAudioInfluence(Number(e.target.value)),
-    [setAudioInfluence],
+    (e: React.ChangeEvent<HTMLInputElement>) => updateInfluence({
+      defaultAudioInfluence: clampInfluence(Number(e.target.value)),
+    }),
+    [updateInfluence],
   );
 
   const handleStyleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => setStyleInfluence(Number(e.target.value)),
-    [setStyleInfluence],
+    (e: React.ChangeEvent<HTMLInputElement>) => updateInfluence({
+      defaultStyleInfluence: clampInfluence(Number(e.target.value)),
+    }),
+    [updateInfluence],
   );
 
   const handleAudioDoubleClick = useCallback(
-    () => setAudioInfluence(selectedProfile?.defaultAudioInfluence ?? DEFAULT_AUDIO_INFLUENCE),
-    [setAudioInfluence, selectedProfile],
+    () => updateInfluence({ defaultAudioInfluence: DEFAULT_AUDIO_INFLUENCE }),
+    [updateInfluence],
   );
 
   const handleStyleDoubleClick = useCallback(
-    () => setStyleInfluence(selectedProfile?.defaultStyleInfluence ?? DEFAULT_STYLE_INFLUENCE),
-    [setStyleInfluence, selectedProfile],
+    () => updateInfluence({ defaultStyleInfluence: DEFAULT_STYLE_INFLUENCE }),
+    [updateInfluence],
   );
 
   // Don't render when no voice profile is selected
-  if (!selectedVoiceProfileId || !selectedProfile) return null;
+  if (!selectedVoiceId || !selectedProfile) return null;
 
   const isPresetActive = (audio: number, style: number) =>
     audioInfluence === audio && styleInfluence === style;
@@ -130,7 +141,10 @@ export function VoiceInfluenceControls() {
           <button
             key={preset.id}
             type="button"
-            onClick={() => applyPreset(preset.audioInfluence, preset.styleInfluence)}
+            onClick={() => updateInfluence({
+              defaultAudioInfluence: preset.audioInfluence,
+              defaultStyleInfluence: preset.styleInfluence,
+            })}
             className={`flex-1 rounded px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
               isPresetActive(preset.audioInfluence, preset.styleInfluence)
                 ? 'bg-[var(--daw-accent)] text-white'
