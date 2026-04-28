@@ -358,7 +358,7 @@ select:focus-visible,
 
 /* Status bar auto-hide: numeric max-height in both states for reliable animation */
 .status-bar {
-  max-height: 200px;
+  max-height: 512px;
   transition: max-height var(--duration-normal) var(--ease-out),
               opacity var(--duration-normal) var(--ease-out);
 }
